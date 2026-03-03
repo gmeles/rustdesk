@@ -78,8 +78,18 @@ jobs:
             libgstreamer-plugins-base1.0-dev \
             clang cmake
 
+      - name: Install flutter_rust_bridge_codegen
+        run: cargo install flutter_rust_bridge_codegen --version "^1.80"
+
       - name: Flutter pub get
         run: cd flutter && flutter pub get
+
+      - name: Generate bridge
+        run: |
+          flutter_rust_bridge_codegen \
+            --rust-input src/flutter_ffi.rs \
+            --dart-output flutter/lib/generated_bridge.dart \
+            --class-name RustdeskImpl
 
       - name: Build APK
         run: |
