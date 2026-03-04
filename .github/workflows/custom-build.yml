@@ -124,7 +124,7 @@ jobs:
       - name: Install cargo-expand and flutter_rust_bridge_codegen
         run: |
           cargo install cargo-expand
-          cargo install flutter_rust_bridge_codegen --version "=1.82.6"
+          cargo install flutter_rust_bridge_codegen --version "=1.80.1"
           $cargoBin = "$env:USERPROFILE\.cargo\bin"
           $currentPath = [System.Environment]::GetEnvironmentVariable("PATH", "Machine")
           [System.Environment]::SetEnvironmentVariable("PATH", "$cargoBin;$currentPath", "Machine")
@@ -274,7 +274,7 @@ jobs:
       - name: Install flutter_rust_bridge_codegen
         run: |
           cargo install cargo-expand
-          cargo install flutter_rust_bridge_codegen --version "=1.82.6"
+          cargo install flutter_rust_bridge_codegen --version "=1.80.1"
 
       - name: Flutter pub get
         run: cd flutter && flutter pub get
