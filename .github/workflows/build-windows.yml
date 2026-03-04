@@ -10,7 +10,6 @@ env:
   FLUTTER_VERSION: "3.24.5"
   VCPKG_COMMIT_ID: "6f29f12e82a8293156836ad81cc9bf5af41fe836"
   VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
-  CARGO_NDK_VERSION: "3.1.2"
 
 jobs:
   build-windows:
@@ -53,7 +52,7 @@ jobs:
       - name: Enable Flutter Windows desktop
         run: flutter config --enable-windows-desktop
 
-      - name: Setup Rust ${{ env.RUST_VERSION }}
+      - name: Setup Rust
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.RUST_VERSION }}
@@ -68,11 +67,9 @@ jobs:
             echo "LIBCLANG_PATH=$libclangDir" >> $env:GITHUB_ENV
             Write-Host "Found LLVM at: $libclangDir"
           } else {
-            # fallback στο default path
             echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
             Write-Host "Using default LLVM path"
           }
-
 
       - name: Cache Cargo
         uses: actions/cache@v4
@@ -81,20 +78,30 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: windows-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: windows-cargo-
+          key: windows-cargo-${{ env.RUST_VERSION }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: windows-cargo-${{ env.RUST_VERSION }}-
 
       - name: Install flutter_rust_bridge_codegen
         run: |
           cargo install cargo-expand
-          cargo install flutter_rust_bridge_codegen --version "^1.82"
+          cargo install flutter_rust_bridge_codegen --version "=1.82.6"
+          echo "$env:USERPROFILE\.cargo\bin" >> $env:GITHUB_PATH
+
+      - name: Flutter pub get
+        run: cd flutter && flutter pub get
 
       - name: Generate bridge
         run: |
+          $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
           flutter_rust_bridge_codegen `
             --rust-input src/flutter_ffi.rs `
             --dart-output flutter/lib/generated_bridge.dart
-          # Fix DartPort bool type
+          if (Test-Path flutter/lib/generated_bridge.dart) {
+            Write-Host "=== Bridge generated OK ==="
+          } else {
+            Write-Error "Bridge file not created!"
+            exit 1
+          }
           (Get-Content flutter/lib/generated_bridge.dart) `
             -replace 'ffi.NativeFunction<ffi.Bool Function\(DartPort', `
                      'ffi.NativeFunction<ffi.Uint8 Function(DartPort' |
@@ -119,21 +126,30 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/vcpkg/installed
-          key: vcpkg-windows-${{ env.VCPKG_COMMIT_ID }}-${{ hashFiles('vcpkg.json') }}
-          restore-keys: vcpkg-windows-${{ env.VCPKG_COMMIT_ID }}-
+          key: vcpkg-windows-${{ env.VCPKG_COMMIT_ID }}
+          restore-keys: vcpkg-windows-
 
       - name: Install vcpkg dependencies
         run: |
           & "$env:VCPKG_ROOT/vcpkg.exe" install `
+            --classic `
             --triplet x64-windows-static `
-            --x-install-root="$env:VCPKG_ROOT/installed"
+            --overlay-ports="${{ github.workspace }}/res/vcpkg" `
+            libvpx `
+            libyuv `
+            opus `
+            aom
 
-      - name: Flutter pub get
-        run: cd flutter && flutter pub get
+      - name: Download Sciter DLL
+        run: |
+          New-Item -ItemType Directory -Force -Path target/release
+          Invoke-WebRequest `
+            -Uri https://raw.githubusercontent.com/c-smile/sciter-sdk/master/bin.win/x64/sciter.dll `
+            -OutFile target/release/sciter.dll
 
       - name: Build RustDesk
         run: |
-          python3 .\build.py --portable --hwcodec --flutter --vram --skip-portable-pack
+          python build.py --portable --hwcodec --flutter --vram --skip-portable-pack
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

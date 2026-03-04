@@ -6,6 +6,7 @@ on:
     branches: [ main ]
 
 env:
+  RUST_VERSION: "1.85"
   FLUTTER_VERSION: "3.24.5"
 
 jobs:
@@ -43,8 +44,11 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Setup Rust (host - for bridge codegen)
-        uses: dtolnay/rust-toolchain@stable
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          components: rustfmt
 
       - name: Install Linux dependencies
         run: |
@@ -57,8 +61,16 @@ jobs:
             libgstreamer1.0-dev \
             libgstreamer-plugins-base1.0-dev \
             libpam0g-dev \
+            libopus-dev \
             clang cmake \
             pkg-config
+
+      - name: Setup vcpkg for bridge gen
+        run: |
+          git clone https://github.com/microsoft/vcpkg ~/vcpkg --depth=1
+          ~/vcpkg/bootstrap-vcpkg.sh -disableMetrics
+          ~/vcpkg/vcpkg install opus --triplet x64-linux
+          echo "VCPKG_ROOT=$HOME/vcpkg" >> $GITHUB_ENV
 
       - name: Cache Cargo
         uses: actions/cache@v4
@@ -67,13 +79,13 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: android-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: android-cargo-
+          key: android-cargo-${{ env.RUST_VERSION }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: android-cargo-${{ env.RUST_VERSION }}-
 
       - name: Install flutter_rust_bridge_codegen
         run: |
           cargo install cargo-expand
-          cargo install flutter_rust_bridge_codegen --version "^1.82"
+          cargo install flutter_rust_bridge_codegen --version "=1.82.6"
 
       - name: Flutter pub get
         run: cd flutter && flutter pub get
@@ -83,6 +95,12 @@ jobs:
           flutter_rust_bridge_codegen \
             --rust-input src/flutter_ffi.rs \
             --dart-output flutter/lib/generated_bridge.dart
+          if [ -f flutter/lib/generated_bridge.dart ]; then
+            echo "=== Bridge generated OK ==="
+          else
+            echo "Bridge file not created!"
+            exit 1
+          fi
 
       - name: Add Android Rust targets
         run: rustup target add aarch64-linux-android armv7-linux-androideabi
