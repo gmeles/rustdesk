@@ -6,7 +6,7 @@ on:
     branches: [ main ]
 
 env:
-  RUST_VERSION: "1.82"
+  RUST_VERSION: "1.85"
   FLUTTER_VERSION: "3.24.5"
   VCPKG_COMMIT_ID: "6f29f12e82a8293156836ad81cc9bf5af41fe836"
   VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
