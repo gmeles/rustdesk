@@ -5,13 +5,19 @@ on:
   push:
     branches: [ main ]
 
+env:
+  RUST_VERSION: "1.85"
+  FLUTTER_VERSION: "3.24.5"
+  VCPKG_COMMIT_ID: "6f29f12e82a8293156836ad81cc9bf5af41fe836"
+  VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
+
 jobs:
 
   # ══════════════════════════════════════════
   #  WINDOWS x64
   # ══════════════════════════════════════════
   build-windows:
-    runs-on: windows-latest
+    runs-on: windows-2022
     defaults:
       run:
         shell: pwsh
@@ -24,20 +30,26 @@ jobs:
 
       - name: Patch server config
         env:
-          MY_SERVER: ${{ secrets.RENDEZVOUS_SERVER }}
-          MY_KEY: ${{ secrets.RS_PUB_KEY }}
+          RENDEZVOUS_SERVER: ${{ secrets.RENDEZVOUS_SERVER }}
+          RS_PUB_KEY: ${{ secrets.RS_PUB_KEY }}
         run: |
           $f = "libs/hbb_common/src/config.rs"
           $content = Get-Content $f -Raw
-          $content = $content -replace 'RENDEZVOUS_SERVERS: &\[&str\] = &\["[^"]*"\]', "RENDEZVOUS_SERVERS: &[&str] = &[`"$env:MY_SERVER`"]"
-          $content = $content -replace 'RS_PUB_KEY: &str = "[^"]*"', "RS_PUB_KEY: &str = `"$env:MY_KEY`""
+          $content = $content -replace 'RENDEZVOUS_SERVERS: &\[&str\] = &\["[^"]*"\]', "RENDEZVOUS_SERVERS: &[&str] = &[`"$env:RENDEZVOUS_SERVER`"]"
+          $content = $content -replace 'RS_PUB_KEY: &str = "[^"]*"', "RS_PUB_KEY: &str = `"$env:RS_PUB_KEY`""
           Set-Content $f $content
-          Write-Host "Patched config.rs OK"
+          Write-Host "=== Patch OK ==="
+          Select-String "RENDEZVOUS_SERVERS|RS_PUB_KEY" $f
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.24.5"
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
 
@@ -45,15 +57,23 @@ jobs:
         run: flutter config --enable-windows-desktop
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: ${{ env.RUST_VERSION }}
           targets: x86_64-pc-windows-msvc
-      
+          components: rustfmt
+
       - name: Set LIBCLANG_PATH
         run: |
-          $llvmPath = (Get-Command clang).Source | Split-Path
-          echo "LIBCLANG_PATH=$llvmPath" >> $env:GITHUB_ENV
-          Write-Host "Using LLVM at: $llvmPath"
+          $clangPath = (Get-Command clang -ErrorAction SilentlyContinue).Source
+          if ($clangPath) {
+            $libclangDir = Split-Path $clangPath
+            echo "LIBCLANG_PATH=$libclangDir" >> $env:GITHUB_ENV
+            Write-Host "Found LLVM at: $libclangDir"
+          } else {
+            echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
+            Write-Host "Using default LLVM path"
+          }
 
       - name: Cache Cargo
         uses: actions/cache@v4
@@ -62,11 +82,51 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: windows-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: windows-cargo-${{ env.RUST_VERSION }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: windows-cargo-${{ env.RUST_VERSION }}-
+
+      - name: Install cargo-expand and flutter_rust_bridge_codegen
+        run: |
+          cargo install cargo-expand --version "=1.0.118"
+          cargo install flutter_rust_bridge_codegen --version "=1.82.6"
+          $cargoBin = "$env:USERPROFILE\.cargo\bin"
+          echo $cargoBin >> $env:GITHUB_PATH
+
+      - name: Flutter pub get
+        run: cd flutter && flutter pub get
+
+      - name: Generate bridge
+        run: |
+          $cargoBin = "$env:USERPROFILE\.cargo\bin"
+          $env:PATH = "$cargoBin;$env:PATH"
+          Write-Host "cargo-expand exists: $(Test-Path $cargoBin\cargo-expand.exe)"
+          Write-Host "frb_codegen exists:  $(Test-Path $cargoBin\flutter_rust_bridge_codegen.exe)"
+          & "$cargoBin\flutter_rust_bridge_codegen.exe" `
+            --rust-input src/flutter_ffi.rs `
+            --dart-output flutter/lib/generated_bridge.dart
+          if (Test-Path flutter/lib/generated_bridge.dart) {
+            Write-Host "=== Bridge generated OK ==="
+          } else {
+            Write-Error "Bridge file not created!"
+            exit 1
+          }
+          (Get-Content flutter/lib/generated_bridge.dart) `
+            -replace 'ffi.NativeFunction<ffi.Bool Function\(DartPort', `
+                     'ffi.NativeFunction<ffi.Uint8 Function(DartPort' |
+          Set-Content flutter/lib/generated_bridge.dart
+
+      - name: Export GitHub Actions cache vars for vcpkg
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
       - name: Setup vcpkg
         run: |
           git clone https://github.com/microsoft/vcpkg $HOME/vcpkg
+          cd $HOME/vcpkg
+          git checkout ${{ env.VCPKG_COMMIT_ID }}
           & "$HOME/vcpkg/bootstrap-vcpkg.bat" -disableMetrics
           echo "VCPKG_ROOT=$HOME/vcpkg" >> $env:GITHUB_ENV
 
@@ -74,11 +134,19 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/vcpkg/installed
-          key: vcpkg-windows-${{ hashFiles('vcpkg.json') }}
+          key: vcpkg-windows-${{ env.VCPKG_COMMIT_ID }}
+          restore-keys: vcpkg-windows-
 
       - name: Install vcpkg dependencies
         run: |
-          & "$env:VCPKG_ROOT/vcpkg.exe" install --triplet x64-windows-static
+          & "$env:VCPKG_ROOT/vcpkg.exe" install `
+            --classic `
+            --triplet x64-windows-static `
+            --overlay-ports="${{ github.workspace }}/res/vcpkg" `
+            libvpx `
+            libyuv `
+            opus `
+            aom
 
       - name: Download Sciter DLL
         run: |
@@ -87,11 +155,9 @@ jobs:
             -Uri https://raw.githubusercontent.com/c-smile/sciter-sdk/master/bin.win/x64/sciter.dll `
             -OutFile target/release/sciter.dll
 
-      - name: Flutter pub get
-        run: cd flutter && flutter pub get
-
-      - name: Build Windows Release
-        run: cd flutter && flutter build windows --release
+      - name: Build RustDesk
+        run: |
+          python build.py --portable --hwcodec --flutter --vram --skip-portable-pack
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -114,14 +180,14 @@ jobs:
 
       - name: Patch server config
         env:
-          MY_SERVER: ${{ secrets.RENDEZVOUS_SERVER }}
-          MY_KEY: ${{ secrets.RS_PUB_KEY }}
+          RENDEZVOUS_SERVER: ${{ secrets.RENDEZVOUS_SERVER }}
+          RS_PUB_KEY: ${{ secrets.RS_PUB_KEY }}
         run: |
-          sed -i "s|RENDEZVOUS_SERVERS: \&\[&str\] = \&\[\"[^\"]*\"\]|RENDEZVOUS_SERVERS: \&[\&str] = \&[\"$MY_SERVER\"]|" \
+          sed -i "s|RENDEZVOUS_SERVERS: \&\[&str\] = \&\[\"[^\"]*\"\]|RENDEZVOUS_SERVERS: \&[\&str] = \&[\"$RENDEZVOUS_SERVER\"]|" \
             libs/hbb_common/src/config.rs
-          sed -i "s|RS_PUB_KEY: \&str = \"[^\"]*\"|RS_PUB_KEY: \&str = \"$MY_KEY\"|" \
+          sed -i "s|RS_PUB_KEY: \&str = \"[^\"]*\"|RS_PUB_KEY: \&str = \"$RS_PUB_KEY\"|" \
             libs/hbb_common/src/config.rs
-          echo "Patched config.rs OK"
+          echo "=== Patch OK ==="
           grep "RENDEZVOUS_SERVERS\|RS_PUB_KEY" libs/hbb_common/src/config.rs
 
       - name: Setup Java 17
@@ -133,19 +199,39 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.24.5"
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@master
         with:
-          targets: >
-            aarch64-linux-android
-            armv7-linux-androideabi
+          toolchain: ${{ env.RUST_VERSION }}
+          components: rustfmt
 
-      - name: Install cargo-ndk
-        run: cargo install cargo-ndk --version "^3"
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libunwind-dev
+          sudo apt-get install -y \
+            libclang-dev \
+            libgtk-3-dev \
+            libglib2.0-dev \
+            libgstreamer1.0-dev \
+            libgstreamer-plugins-base1.0-dev \
+            libpam0g-dev \
+            libopus-dev \
+            clang cmake \
+            pkg-config
+
+      - name: Setup vcpkg for bridge gen
+        run: |
+          git clone https://github.com/microsoft/vcpkg ~/vcpkg --depth=1
+          ~/vcpkg/bootstrap-vcpkg.sh -disableMetrics
+          ~/vcpkg/vcpkg install opus \
+            --classic \
+            --triplet x64-linux
+          echo "VCPKG_ROOT=$HOME/vcpkg" >> $GITHUB_ENV
 
       - name: Cache Cargo
         uses: actions/cache@v4
@@ -154,7 +240,35 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: android-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: android-cargo-${{ env.RUST_VERSION }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: android-cargo-${{ env.RUST_VERSION }}-
+
+      - name: Install flutter_rust_bridge_codegen
+        run: |
+          cargo install cargo-expand --version "=1.0.118"
+          cargo install flutter_rust_bridge_codegen --version "=1.82.6"
+
+      - name: Flutter pub get
+        run: cd flutter && flutter pub get
+
+      - name: Generate bridge
+        run: |
+          export PATH="$HOME/.cargo/bin:$PATH"
+          flutter_rust_bridge_codegen \
+            --rust-input src/flutter_ffi.rs \
+            --dart-output flutter/lib/generated_bridge.dart
+          if [ -f flutter/lib/generated_bridge.dart ]; then
+            echo "=== Bridge generated OK ==="
+          else
+            echo "Bridge file not created!"
+            exit 1
+          fi
+
+      - name: Add Android Rust targets
+        run: rustup target add aarch64-linux-android armv7-linux-androideabi
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --version "^3"
 
       - name: Setup Android NDK
         uses: nttld/setup-ndk@v1
@@ -165,19 +279,6 @@ jobs:
 
       - name: Set NDK env
         run: echo "ANDROID_NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}" >> $GITHUB_ENV
-
-      - name: Install Linux dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libunwind-dev
-          sudo apt-get install -y \
-            libclang-dev \
-            libgstreamer1.0-dev \
-            libgstreamer-plugins-base1.0-dev \
-            clang cmake
-
-      - name: Flutter pub get
-        run: cd flutter && flutter pub get
 
       - name: Build APK
         run: |
