@@ -308,6 +308,57 @@ jobs:
       - name: Set NDK env
         run: echo "ANDROID_NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}" >> $GITHUB_ENV
 
+      - name: Fix Kotlin version
+        run: |
+          # Ανανέωση kotlin version στο build.gradle
+          sed -i "s/ext.kotlin_version = .*/ext.kotlin_version = '1.9.10'/" \
+            flutter/android/build.gradle
+          # Ανανέωση στο settings.gradle αν υπάρχει
+          if grep -q "kotlin.android" flutter/android/settings.gradle; then
+            sed -i "s/id \"org.jetbrains.kotlin.android\" version \".*\"/id \"org.jetbrains.kotlin.android\" version \"1.9.10\"/" \
+              flutter/android/settings.gradle
+          fi
+          echo "=== Kotlin version fixed ==="
+          grep -i "kotlin" flutter/android/build.gradle || true
+          grep -i "kotlin" flutter/android/settings.gradle || true
+
+      - name: Generate keystore
+        run: |
+          keytool -genkey -v \
+            -keystore flutter/android/app/upload-keystore.jks \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -alias upload \
+            -dname "CN=RustDesk, OU=IT, O=MyOrg, L=City, S=State, C=US" \
+            -storepass keystorepassword \
+            -keypass keystorepassword
+
+      - name: Create key.properties
+        run: |
+          cat > flutter/android/key.properties << EOF
+          storePassword=keystorepassword
+          keyPassword=keystorepassword
+          keyAlias=upload
+          storeFile=upload-keystore.jks
+          EOF
+
+      - name: Configure signing in build.gradle
+        run: |
+          # Βρες και άλλαξε το android/app/build.gradle για signing
+          sed -i '/android {/a\
+              signingConfigs {\
+                  release {\
+                      def keystorePropertiesFile = rootProject.file("key.properties")\
+                      def keystoreProperties = new Properties()\
+                      keystoreProperties.load(new FileInputStream(keystorePropertiesFile))\
+                      keyAlias keystoreProperties["keyAlias"]\
+                      keyPassword keystoreProperties["keyPassword"]\
+                      storeFile file(keystoreProperties["storeFile"])\
+                      storePassword keystoreProperties["storePassword"]\
+                  }\
+              }' flutter/android/app/build.gradle
+          sed -i 's/buildTypes {/buildTypes {\n        release {\n            signingConfig signingConfigs.release\n        }/' \
+            flutter/android/app/build.gradle
+
       - name: Build APK
         run: |
           cd flutter
