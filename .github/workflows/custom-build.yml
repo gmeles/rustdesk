@@ -110,7 +110,7 @@ jobs:
 
       - name: Install vcpkg dependencies
         run: |
-          # ffmpeg χρειάζεται για hwcodec (libavutil/pixfmt.h)
+          # Χωρίς ffmpeg — δεν χρησιμοποιούμε --hwcodec
           & "$env:VCPKG_ROOT/vcpkg.exe" install `
             --classic `
             --triplet x64-windows-static `
@@ -118,8 +118,7 @@ jobs:
             libvpx `
             libyuv `
             opus `
-            aom `
-            ffmpeg
+            aom
 
       # ── Bridge generation ─────────────────────────────────
       - name: Install cargo-expand and flutter_rust_bridge_codegen
@@ -178,7 +177,8 @@ jobs:
 
       - name: Build RustDesk
         run: |
-          python build.py --portable --hwcodec --flutter --vram --skip-portable-pack
+          # Χωρίς --hwcodec και --vram για να αποφύγουμε το ffmpeg dependency
+          python build.py --portable --flutter --skip-portable-pack
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -254,9 +254,11 @@ jobs:
           ~/vcpkg/vcpkg install \
             --classic \
             --triplet x64-linux \
+            --overlay-ports="${{ github.workspace }}/res/vcpkg" \
             opus \
             libvpx \
-            libyuv
+            libyuv \
+            aom
           echo "VCPKG_ROOT=$HOME/vcpkg" >> $GITHUB_ENV
 
       - name: Cache Cargo
