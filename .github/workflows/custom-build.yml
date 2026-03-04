@@ -87,10 +87,15 @@ jobs:
 
       - name: Install cargo-expand and flutter_rust_bridge_codegen
         run: |
-          cargo install cargo-expand --version "=1.0.118"
-          cargo install flutter_rust_bridge_codegen --version "=1.82.6"
+          cargo install cargo-expand --version "=1.0.118" --locked
+          cargo install flutter_rust_bridge_codegen --version "=1.82.6" --locked
           $cargoBin = "$env:USERPROFILE\.cargo\bin"
+          $currentPath = [System.Environment]::GetEnvironmentVariable("PATH", "Machine")
+          [System.Environment]::SetEnvironmentVariable("PATH", "$cargoBin;$currentPath", "Machine")
+          $env:PATH = "$cargoBin;$env:PATH"
           echo $cargoBin >> $env:GITHUB_PATH
+          Write-Host "Files in cargo bin:"
+          Get-ChildItem "$cargoBin" | Where-Object { $_.Name -like "cargo*" -or $_.Name -like "flutter*" }
 
       - name: Flutter pub get
         run: cd flutter && flutter pub get
@@ -99,11 +104,18 @@ jobs:
         run: |
           $cargoBin = "$env:USERPROFILE\.cargo\bin"
           $env:PATH = "$cargoBin;$env:PATH"
+          [System.Environment]::SetEnvironmentVariable("PATH", "$cargoBin;$([System.Environment]::GetEnvironmentVariable('PATH','Machine'))", "Machine")
           Write-Host "cargo-expand exists: $(Test-Path $cargoBin\cargo-expand.exe)"
           Write-Host "frb_codegen exists:  $(Test-Path $cargoBin\flutter_rust_bridge_codegen.exe)"
-          & "$cargoBin\flutter_rust_bridge_codegen.exe" `
-            --rust-input src/flutter_ffi.rs `
-            --dart-output flutter/lib/generated_bridge.dart
+          $proc = Start-Process `
+            -FilePath "$cargoBin\flutter_rust_bridge_codegen.exe" `
+            -ArgumentList "--rust-input","src/flutter_ffi.rs","--dart-output","flutter/lib/generated_bridge.dart" `
+            -Environment @{ PATH = "$cargoBin;$env:PATH"; CARGO_HOME = "$env:USERPROFILE\.cargo" } `
+            -Wait -PassThru -NoNewWindow
+          if ($proc.ExitCode -ne 0) {
+            Write-Error "flutter_rust_bridge_codegen failed with exit code $($proc.ExitCode)"
+            exit 1
+          }
           if (Test-Path flutter/lib/generated_bridge.dart) {
             Write-Host "=== Bridge generated OK ==="
           } else {
@@ -245,8 +257,8 @@ jobs:
 
       - name: Install flutter_rust_bridge_codegen
         run: |
-          cargo install cargo-expand --version "=1.0.118"
-          cargo install flutter_rust_bridge_codegen --version "=1.82.6"
+          cargo install cargo-expand --version "=1.0.118" --locked
+          cargo install flutter_rust_bridge_codegen --version "=1.82.6" --locked
 
       - name: Flutter pub get
         run: cd flutter && flutter pub get
