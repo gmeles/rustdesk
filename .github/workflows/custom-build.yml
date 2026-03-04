@@ -343,21 +343,50 @@ jobs:
 
       - name: Configure signing in build.gradle
         run: |
-          # Βρες και άλλαξε το android/app/build.gradle για signing
-          sed -i '/android {/a\
-              signingConfigs {\
-                  release {\
-                      def keystorePropertiesFile = rootProject.file("key.properties")\
-                      def keystoreProperties = new Properties()\
-                      keystoreProperties.load(new FileInputStream(keystorePropertiesFile))\
-                      keyAlias keystoreProperties["keyAlias"]\
-                      keyPassword keystoreProperties["keyPassword"]\
-                      storeFile file(keystoreProperties["storeFile"])\
-                      storePassword keystoreProperties["storePassword"]\
-                  }\
-              }' flutter/android/app/build.gradle
-          sed -i 's/buildTypes {/buildTypes {\n        release {\n            signingConfig signingConfigs.release\n        }/' \
-            flutter/android/app/build.gradle
+          python3 - << 'EOF'
+          import re
+
+          with open("flutter/android/app/build.gradle", "r") as f:
+              content = f.read()
+
+          # Αντικατάστησε το υπάρχον signingConfigs block
+          signing_block = '''    signingConfigs {
+              release {
+                  def props = new Properties()
+                  props.load(new FileInputStream(rootProject.file("key.properties")))
+                  keyAlias props["keyAlias"]
+                  keyPassword props["keyPassword"]
+                  storeFile file(props["storeFile"])
+                  storePassword props["storePassword"]
+              }
+          }'''
+
+          # Αν υπάρχει ήδη signingConfigs, αντικατέστησέ το
+          if "signingConfigs" in content:
+              content = re.sub(
+                  r'signingConfigs\s*\{.*?\}(\s*\})',
+                  signing_block + r'\1',
+                  content,
+                  flags=re.DOTALL
+              )
+          else:
+              # Αν δεν υπάρχει, πρόσθεσέ το μετά το "android {"
+              content = content.replace("android {", "android {\n" + signing_block, 1)
+
+          # Βεβαιώσου ότι το release buildType χρησιμοποιεί το signingConfig
+          content = re.sub(
+              r'(buildTypes\s*\{[^}]*release\s*\{)',
+              r'\1\n            signingConfig signingConfigs.release',
+              content,
+              flags=re.DOTALL
+          )
+
+          with open("flutter/android/app/build.gradle", "w") as f:
+              f.write(content)
+
+          print("=== build.gradle signing configured ===")
+          EOF
+          cat flutter/android/app/build.gradle
 
       - name: Build APK
         run: |
