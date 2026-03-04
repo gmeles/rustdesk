@@ -110,6 +110,7 @@ jobs:
 
       - name: Install vcpkg dependencies
         run: |
+          # ffmpeg χρειάζεται για hwcodec (libavutil/pixfmt.h)
           & "$env:VCPKG_ROOT/vcpkg.exe" install `
             --classic `
             --triplet x64-windows-static `
@@ -117,7 +118,8 @@ jobs:
             libvpx `
             libyuv `
             opus `
-            aom
+            aom `
+            ffmpeg
 
       # ── Bridge generation ─────────────────────────────────
       - name: Install cargo-expand and flutter_rust_bridge_codegen
@@ -146,9 +148,9 @@ jobs:
             -FilePath "$cargoBin\flutter_rust_bridge_codegen.exe" `
             -ArgumentList "--rust-input","src/flutter_ffi.rs","--dart-output","flutter/lib/generated_bridge.dart" `
             -Environment @{
-              PATH      = "$cargoBin;$env:PATH"
-              CARGO_HOME = "$env:USERPROFILE\.cargo"
-              VCPKG_ROOT = "$env:VCPKG_ROOT"
+              PATH          = "$cargoBin;$env:PATH"
+              CARGO_HOME    = "$env:USERPROFILE\.cargo"
+              VCPKG_ROOT    = "$env:VCPKG_ROOT"
               LIBCLANG_PATH = "$env:LIBCLANG_PATH"
             } `
             -Wait -PassThru -NoNewWindow
@@ -231,8 +233,8 @@ jobs:
       - name: Install Linux dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libunwind-dev
           sudo apt-get install -y \
+            libunwind-dev \
             libclang-dev \
             libgtk-3-dev \
             libglib2.0-dev \
@@ -240,6 +242,7 @@ jobs:
             libgstreamer-plugins-base1.0-dev \
             libpam0g-dev \
             libopus-dev \
+            nasm \
             clang cmake \
             pkg-config
 
