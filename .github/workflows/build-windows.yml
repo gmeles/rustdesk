@@ -7,7 +7,6 @@ on:
 
 env:
   RUST_VERSION: "1.75"
-  LLVM_VERSION: "15.0.6"
   FLUTTER_VERSION: "3.24.5"
   VCPKG_COMMIT_ID: "6f29f12e82a8293156836ad81cc9bf5af41fe836"
   VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
@@ -61,10 +60,19 @@ jobs:
           targets: x86_64-pc-windows-msvc
           components: rustfmt
 
-      - name: Install LLVM ${{ env.LLVM_VERSION }}
+      - name: Set LIBCLANG_PATH
         run: |
-          choco install -y llvm --version=${{ env.LLVM_VERSION }} --allow-downgrade
-          echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
+          $clangPath = (Get-Command clang -ErrorAction SilentlyContinue).Source
+          if ($clangPath) {
+            $libclangDir = Split-Path $clangPath
+            echo "LIBCLANG_PATH=$libclangDir" >> $env:GITHUB_ENV
+            Write-Host "Found LLVM at: $libclangDir"
+          } else {
+            # fallback στο default path
+            echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
+            Write-Host "Using default LLVM path"
+          }
+
 
       - name: Cache Cargo
         uses: actions/cache@v4

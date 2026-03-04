@@ -5,6 +5,9 @@ on:
   push:
     branches: [ main ]
 
+env:
+  FLUTTER_VERSION: "3.24.5"
+
 jobs:
   build-android:
     runs-on: ubuntu-22.04
@@ -17,13 +20,14 @@ jobs:
 
       - name: Patch server config
         env:
-          MY_SERVER: ${{ secrets.RENDEZVOUS_SERVER }}
-          MY_KEY: ${{ secrets.RS_PUB_KEY }}
+          RENDEZVOUS_SERVER: ${{ secrets.RENDEZVOUS_SERVER }}
+          RS_PUB_KEY: ${{ secrets.RS_PUB_KEY }}
         run: |
-          sed -i "s|RENDEZVOUS_SERVERS: \&\[&str\] = \&\[\"[^\"]*\"\]|RENDEZVOUS_SERVERS: \&[\&str] = \&[\"$MY_SERVER\"]|" \
+          sed -i "s|RENDEZVOUS_SERVERS: \&\[&str\] = \&\[\"[^\"]*\"\]|RENDEZVOUS_SERVERS: \&[\&str] = \&[\"$RENDEZVOUS_SERVER\"]|" \
             libs/hbb_common/src/config.rs
-          sed -i "s|RS_PUB_KEY: \&str = \"[^\"]*\"|RS_PUB_KEY: \&str = \"$MY_KEY\"|" \
+          sed -i "s|RS_PUB_KEY: \&str = \"[^\"]*\"|RS_PUB_KEY: \&str = \"$RS_PUB_KEY\"|" \
             libs/hbb_common/src/config.rs
+          echo "=== Patch OK ==="
           grep "RENDEZVOUS_SERVERS\|RS_PUB_KEY" libs/hbb_common/src/config.rs
 
       - name: Setup Java 17
@@ -35,19 +39,25 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.24.5"
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
 
-      - name: Setup Rust
+      - name: Setup Rust (host - for bridge codegen)
         uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: >
-            aarch64-linux-android
-            armv7-linux-androideabi
 
-      - name: Install cargo-ndk
-        run: cargo install cargo-ndk --version "^3"
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libunwind-dev
+          sudo apt-get install -y \
+            libclang-dev \
+            libgtk-3-dev \
+            libglib2.0-dev \
+            libgstreamer1.0-dev \
+            libgstreamer-plugins-base1.0-dev \
+            clang cmake \
+            pkg-config
 
       - name: Cache Cargo
         uses: actions/cache@v4
@@ -57,6 +67,27 @@ jobs:
             ~/.cargo/git
             target
           key: android-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: android-cargo-
+
+      - name: Install flutter_rust_bridge_codegen
+        run: |
+          cargo install cargo-expand
+          cargo install flutter_rust_bridge_codegen --version "^1.82"
+
+      - name: Flutter pub get
+        run: cd flutter && flutter pub get
+
+      - name: Generate bridge
+        run: |
+          flutter_rust_bridge_codegen \
+            --rust-input src/flutter_ffi.rs \
+            --dart-output flutter/lib/generated_bridge.dart
+
+      - name: Add Android Rust targets
+        run: rustup target add aarch64-linux-android armv7-linux-androideabi
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --version "^3"
 
       - name: Setup Android NDK
         uses: nttld/setup-ndk@v1
@@ -67,31 +98,6 @@ jobs:
 
       - name: Set NDK env
         run: echo "ANDROID_NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}" >> $GITHUB_ENV
-
-      - name: Install Linux dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libunwind-dev
-          sudo apt-get install -y \
-            libclang-dev \
-            libgstreamer1.0-dev \
-            libgstreamer-plugins-base1.0-dev \
-            clang cmake
-
-      - name: Install flutter_rust_bridge_codegen
-        run: |
-          cargo install cargo-expand
-          cargo install flutter_rust_bridge_codegen --version "^1.80"
-
-      - name: Flutter pub get
-        run: cd flutter && flutter pub get
-
-      - name: Generate bridge
-        run: |
-          flutter_rust_bridge_codegen \
-            --rust-input src/flutter_ffi.rs \
-            --dart-output flutter/lib/generated_bridge.dart \
-            --class-name RustdeskImpl
 
       - name: Build APK
         run: |
