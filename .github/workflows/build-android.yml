@@ -86,7 +86,7 @@ jobs:
 
       - name: Install flutter_rust_bridge_codegen
         run: |
-          cargo install cargo-expand
+          cargo install cargo-expand --version "=1.0.118"
           cargo install flutter_rust_bridge_codegen --version "=1.82.6"
 
       - name: Flutter pub get
