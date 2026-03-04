@@ -79,7 +79,9 @@ jobs:
             clang cmake
 
       - name: Install flutter_rust_bridge_codegen
-        run: cargo install flutter_rust_bridge_codegen --version "^1.80"
+        run: |
+          cargo install cargo-expand
+          cargo install flutter_rust_bridge_codegen --version "^1.80"
 
       - name: Flutter pub get
         run: cd flutter && flutter pub get
