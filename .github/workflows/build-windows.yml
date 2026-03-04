@@ -81,19 +81,26 @@ jobs:
           key: windows-cargo-${{ env.RUST_VERSION }}-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: windows-cargo-${{ env.RUST_VERSION }}-
 
-      - name: Install flutter_rust_bridge_codegen
+      - name: Install cargo-expand and flutter_rust_bridge_codegen
         run: |
           cargo install cargo-expand
           cargo install flutter_rust_bridge_codegen --version "=1.82.6"
-          echo "$env:USERPROFILE\.cargo\bin" >> $env:GITHUB_PATH
+          # Ανανέωση PATH στο ίδιο shell session
+          $cargoBin = "$env:USERPROFILE\.cargo\bin"
+          echo $cargoBin >> $env:GITHUB_PATH
+          $env:PATH = "$cargoBin;$env:PATH"
+          # Επαλήθευση
+          Write-Host "cargo-expand path: $(Get-Command cargo-expand -ErrorAction SilentlyContinue)"
+          cargo expand --version
 
       - name: Flutter pub get
         run: cd flutter && flutter pub get
 
       - name: Generate bridge
         run: |
-          $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
-          flutter_rust_bridge_codegen `
+          $cargoBin = "$env:USERPROFILE\.cargo\bin"
+          $env:PATH = "$cargoBin;$env:PATH"
+          & "$cargoBin\flutter_rust_bridge_codegen.exe" `
             --rust-input src/flutter_ffi.rs `
             --dart-output flutter/lib/generated_bridge.dart
           if (Test-Path flutter/lib/generated_bridge.dart) {

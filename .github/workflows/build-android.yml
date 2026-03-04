@@ -69,7 +69,9 @@ jobs:
         run: |
           git clone https://github.com/microsoft/vcpkg ~/vcpkg --depth=1
           ~/vcpkg/bootstrap-vcpkg.sh -disableMetrics
-          ~/vcpkg/vcpkg install opus --triplet x64-linux
+          ~/vcpkg/vcpkg install opus \
+            --classic \
+            --triplet x64-linux
           echo "VCPKG_ROOT=$HOME/vcpkg" >> $GITHUB_ENV
 
       - name: Cache Cargo
@@ -92,6 +94,7 @@ jobs:
 
       - name: Generate bridge
         run: |
+          export PATH="$HOME/.cargo/bin:$PATH"
           flutter_rust_bridge_codegen \
             --rust-input src/flutter_ffi.rs \
             --dart-output flutter/lib/generated_bridge.dart
