@@ -70,8 +70,6 @@ jobs:
       - name: Setup vcpkg
         run: |
           git clone https://github.com/microsoft/vcpkg $HOME/vcpkg
-          cd $HOME/vcpkg
-          git checkout 2023.04.15
           & "$HOME/vcpkg/bootstrap-vcpkg.bat" -disableMetrics
           echo "VCPKG_ROOT=$HOME/vcpkg" >> $env:GITHUB_ENV
           echo "VCPKG_BINARY_SOURCES=clear;x-gha,readwrite" >> $env:GITHUB_ENV
@@ -79,8 +77,13 @@ jobs:
       - name: Install vcpkg dependencies
         run: |
           & "$env:VCPKG_ROOT/vcpkg.exe" install `
+            --classic `
             --triplet x64-windows-static `
-            --overlay-ports="${{ github.workspace }}/res/vcpkg"
+            --overlay-ports="${{ github.workspace }}/res/vcpkg" `
+            libvpx `
+            libyuv `
+            opus `
+            aom
 
       - name: Download Sciter DLL
         run: |
