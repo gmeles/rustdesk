@@ -85,7 +85,6 @@ jobs:
           key: windows-cargo-${{ env.RUST_VERSION }}-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: windows-cargo-${{ env.RUST_VERSION }}-
 
-      # ── vcpkg ΠΡΙΝ το bridge gen ──────────────────────────
       - name: Export GitHub Actions cache vars for vcpkg
         uses: actions/github-script@v7
         with:
@@ -110,7 +109,6 @@ jobs:
 
       - name: Install vcpkg dependencies
         run: |
-          # Χωρίς ffmpeg — δεν χρησιμοποιούμε --hwcodec
           & "$env:VCPKG_ROOT/vcpkg.exe" install `
             --classic `
             --triplet x64-windows-static `
@@ -120,7 +118,6 @@ jobs:
             opus `
             aom
 
-      # ── Bridge generation ─────────────────────────────────
       - name: Install cargo-expand and flutter_rust_bridge_codegen
         run: |
           cargo install cargo-expand
@@ -177,7 +174,6 @@ jobs:
 
       - name: Build RustDesk
         run: |
-          # Χωρίς --hwcodec και --vram για να αποφύγουμε το ffmpeg dependency
           python build.py --portable --flutter --skip-portable-pack
 
       - name: Upload artifact
@@ -208,8 +204,46 @@ jobs:
             libs/hbb_common/src/config.rs
           sed -i "s|RS_PUB_KEY: \&str = \"[^\"]*\"|RS_PUB_KEY: \&str = \"$RS_PUB_KEY\"|" \
             libs/hbb_common/src/config.rs
-          echo "=== Patch OK ==="
+          echo "=== Server config patched ==="
           grep "RENDEZVOUS_SERVERS\|RS_PUB_KEY" libs/hbb_common/src/config.rs
+
+      - name: Rename package and app name
+        run: |
+          OLD_PKG="com.carriez.flutter_hbb"
+          NEW_PKG="gr.interlogic.rustclient"
+          OLD_PATH="com/carriez/flutter_hbb"
+          NEW_PATH="gr/interlogic/rustclient"
+          APP_NAME="Interlogic Support"
+
+          # build.gradle - applicationId
+          sed -i "s|applicationId \"$OLD_PKG\"|applicationId \"$NEW_PKG\"|g" \
+            flutter/android/app/build.gradle
+
+          # AndroidManifest.xml
+          sed -i "s|$OLD_PKG|$NEW_PKG|g" \
+            flutter/android/app/src/main/AndroidManifest.xml
+
+          # Kotlin source files - αλλαγή package declaration
+          find flutter/android/app/src -name "*.kt" | \
+            xargs sed -i "s|package $OLD_PKG|package $NEW_PKG|g"
+          find flutter/android/app/src -name "*.kt" | \
+            xargs sed -i "s|import $OLD_PKG|import $NEW_PKG|g"
+
+          # Μετακίνηση Kotlin source φακέλου
+          NEW_DIR="flutter/android/app/src/main/kotlin/$NEW_PATH"
+          OLD_DIR="flutter/android/app/src/main/kotlin/$OLD_PATH"
+          mkdir -p "$NEW_DIR"
+          cp "$OLD_DIR/"*.kt "$NEW_DIR/" 2>/dev/null || true
+          rm -rf "flutter/android/app/src/main/kotlin/com"
+
+          # App name στο strings.xml
+          sed -i "s|<string name=\"app_name\">.*</string>|<string name=\"app_name\">$APP_NAME</string>|g" \
+            flutter/android/app/src/main/res/values/strings.xml || true
+
+          echo "=== Package renamed to $NEW_PKG ==="
+          echo "=== App name set to: $APP_NAME ==="
+          grep "applicationId" flutter/android/app/build.gradle
+          grep "package" flutter/android/app/src/main/AndroidManifest.xml | head -3
 
       - name: Setup Java 17
         uses: actions/setup-java@v4
@@ -246,7 +280,6 @@ jobs:
             clang cmake \
             pkg-config
 
-      # ── vcpkg ΠΡΙΝ το bridge gen ──────────────────────────
       - name: Setup vcpkg for bridge gen
         run: |
           git clone https://github.com/microsoft/vcpkg ~/vcpkg --depth=1
@@ -292,6 +325,88 @@ jobs:
             exit 1
           fi
 
+      - name: Fix Kotlin version
+        run: |
+          sed -i "s/ext.kotlin_version = .*/ext.kotlin_version = '1.9.10'/" \
+            flutter/android/build.gradle
+          if grep -q "kotlin.android" flutter/android/settings.gradle; then
+            sed -i "s/id \"org.jetbrains.kotlin.android\" version \".*\"/id \"org.jetbrains.kotlin.android\" version \"1.9.10\"/" \
+              flutter/android/settings.gradle
+          fi
+          echo "=== Kotlin version fixed ==="
+
+      - name: Setup signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.KEYSTORE_STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEYSTORE_KEY_PASSWORD }}
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 --decode > flutter/android/app/upload-keystore.jks
+          cat > flutter/android/key.properties << EOF
+          storePassword=$STORE_PASSWORD
+          keyPassword=$KEY_PASSWORD
+          keyAlias=key
+          storeFile=upload-keystore.jks
+          EOF
+          echo "=== Keystore ready ==="
+          ls -la flutter/android/app/upload-keystore.jks
+
+      - name: Configure signing in build.gradle
+        run: |
+          python3 - << 'PYEOF'
+          import re
+
+          with open("flutter/android/app/build.gradle", "r") as f:
+              content = f.read()
+
+          # Προσθήκη key.properties loading στην αρχή αν δεν υπάρχει
+          if "key.properties" not in content:
+              props_code = '''def keystorePropertiesFile = rootProject.file("key.properties")
+          def keystoreProperties = new Properties()
+          if (keystorePropertiesFile.exists()) {
+              keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+          }
+
+          '''
+              content = props_code + content
+
+          # Αφαίρεση τυχόν υπαρχόντων signingConfigs block
+          content = re.sub(
+              r'\s*signingConfigs\s*\{[^}]*(?:\{[^}]*\}[^}]*)?\}',
+              '',
+              content,
+              flags=re.DOTALL
+          )
+
+          # Προσθήκη νέου signingConfigs πριν το buildTypes
+          new_signing = '''
+              signingConfigs {
+                  release {
+                      keyAlias keystoreProperties['keyAlias']
+                      keyPassword keystoreProperties['keyPassword']
+                      storeFile keystoreProperties['storeFile'] ? file(keystoreProperties['storeFile']) : null
+                      storePassword keystoreProperties['storePassword']
+                  }
+              }
+          '''
+          content = content.replace("    buildTypes {", new_signing + "\n    buildTypes {", 1)
+
+          # Αντικατάσταση release buildType
+          content = re.sub(
+              r'release\s*\{[^}]*\}',
+              '''release {
+                      signingConfig signingConfigs.release
+                      proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+                  }''',
+              content
+          )
+
+          with open("flutter/android/app/build.gradle", "w") as f:
+              f.write(content)
+
+          print("=== Signing configured ===")
+          PYEOF
+
       - name: Add Android Rust targets
         run: rustup target add aarch64-linux-android armv7-linux-androideabi
 
@@ -307,86 +422,6 @@ jobs:
 
       - name: Set NDK env
         run: echo "ANDROID_NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}" >> $GITHUB_ENV
-
-      - name: Fix Kotlin version
-        run: |
-          # Ανανέωση kotlin version στο build.gradle
-          sed -i "s/ext.kotlin_version = .*/ext.kotlin_version = '1.9.10'/" \
-            flutter/android/build.gradle
-          # Ανανέωση στο settings.gradle αν υπάρχει
-          if grep -q "kotlin.android" flutter/android/settings.gradle; then
-            sed -i "s/id \"org.jetbrains.kotlin.android\" version \".*\"/id \"org.jetbrains.kotlin.android\" version \"1.9.10\"/" \
-              flutter/android/settings.gradle
-          fi
-          echo "=== Kotlin version fixed ==="
-          grep -i "kotlin" flutter/android/build.gradle || true
-          grep -i "kotlin" flutter/android/settings.gradle || true
-
-      - name: Generate keystore
-        run: |
-          keytool -genkey -v \
-            -keystore flutter/android/app/upload-keystore.jks \
-            -keyalg RSA -keysize 2048 -validity 10000 \
-            -alias upload \
-            -dname "CN=RustDesk, OU=IT, O=MyOrg, L=City, S=State, C=US" \
-            -storepass keystorepassword \
-            -keypass keystorepassword
-
-      - name: Create key.properties
-        run: |
-          cat > flutter/android/key.properties << EOF
-          storePassword=keystorepassword
-          keyPassword=keystorepassword
-          keyAlias=upload
-          storeFile=upload-keystore.jks
-          EOF
-
-      - name: Configure signing in build.gradle
-        run: |
-          python3 - << 'EOF'
-          import re
-
-          with open("flutter/android/app/build.gradle", "r") as f:
-              content = f.read()
-
-          # Αντικατάστησε το υπάρχον signingConfigs block
-          signing_block = '''    signingConfigs {
-              release {
-                  def props = new Properties()
-                  props.load(new FileInputStream(rootProject.file("key.properties")))
-                  keyAlias props["keyAlias"]
-                  keyPassword props["keyPassword"]
-                  storeFile file(props["storeFile"])
-                  storePassword props["storePassword"]
-              }
-          }'''
-
-          # Αν υπάρχει ήδη signingConfigs, αντικατέστησέ το
-          if "signingConfigs" in content:
-              content = re.sub(
-                  r'signingConfigs\s*\{.*?\}(\s*\})',
-                  signing_block + r'\1',
-                  content,
-                  flags=re.DOTALL
-              )
-          else:
-              # Αν δεν υπάρχει, πρόσθεσέ το μετά το "android {"
-              content = content.replace("android {", "android {\n" + signing_block, 1)
-
-          # Βεβαιώσου ότι το release buildType χρησιμοποιεί το signingConfig
-          content = re.sub(
-              r'(buildTypes\s*\{[^}]*release\s*\{)',
-              r'\1\n            signingConfig signingConfigs.release',
-              content,
-              flags=re.DOTALL
-          )
-
-          with open("flutter/android/app/build.gradle", "w") as f:
-              f.write(content)
-
-          print("=== build.gradle signing configured ===")
-          EOF
-          cat flutter/android/app/build.gradle
 
       - name: Build APK
         run: |
