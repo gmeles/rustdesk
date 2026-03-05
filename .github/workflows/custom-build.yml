@@ -334,14 +334,15 @@ jobs:
               flutter/android/settings.gradle
           fi
           echo "=== Kotlin version fixed ==="
-
+          
       - name: Setup signing
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           STORE_PASSWORD: ${{ secrets.KEYSTORE_STORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEYSTORE_KEY_PASSWORD }}
         run: |
-          echo "$KEYSTORE_BASE64" | base64 --decode > flutter/android/app/upload-keystore.jks
+          # Αφαίρεση whitespace/newlines πριν το decode
+          echo "$KEYSTORE_BASE64" | tr -d '[:space:]' | base64 --decode > flutter/android/app/upload-keystore.jks
           cat > flutter/android/key.properties << EOF
           storePassword=$STORE_PASSWORD
           keyPassword=$KEY_PASSWORD
