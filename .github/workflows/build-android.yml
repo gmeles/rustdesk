@@ -182,51 +182,38 @@ jobs:
       - name: Configure signing in build.gradle
         run: |
           python3 - << 'PYEOF'
-          import re
-
           with open("flutter/android/app/build.gradle", "r") as f:
               content = f.read()
 
-          # Προσθήκη key.properties loading στην αρχή αν δεν υπάρχει
+          # Βήμα 1: Προσθήκη key.properties loading στην αρχή
           if "key.properties" not in content:
-              props_code = '''def keystorePropertiesFile = rootProject.file("key.properties")
-          def keystoreProperties = new Properties()
-          if (keystorePropertiesFile.exists()) {
-              keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
-          }
+              props = (
+                  'def keystorePropertiesFile = rootProject.file("key.properties")\n'
+                  'def keystoreProperties = new Properties()\n'
+                  'if (keystorePropertiesFile.exists()) {\n'
+                  '    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))\n'
+                  '}\n\n'
+              )
+              content = props + content
 
-          '''
-              content = props_code + content
+          # Βήμα 2: Προσθήκη signingConfigs block αν δεν υπάρχει
+          if "signingConfigs" not in content:
+              signing = (
+                  "\n    signingConfigs {\n"
+                  "        release {\n"
+                  "            keyAlias keystoreProperties['keyAlias']\n"
+                  "            keyPassword keystoreProperties['keyPassword']\n"
+                  "            storeFile keystoreProperties['storeFile'] ? file(keystoreProperties['storeFile']) : null\n"
+                  "            storePassword keystoreProperties['storePassword']\n"
+                  "        }\n"
+                  "    }\n"
+              )
+              content = content.replace("    buildTypes {", signing + "    buildTypes {", 1)
 
-          # Αφαίρεση τυχόν υπαρχόντων signingConfigs block
-          content = re.sub(
-              r'\s*signingConfigs\s*\{[^}]*(?:\{[^}]*\}[^}]*)?\}',
-              '',
-              content,
-              flags=re.DOTALL
-          )
-
-          # Προσθήκη νέου signingConfigs πριν το buildTypes
-          new_signing = '''
-              signingConfigs {
-                  release {
-                      keyAlias keystoreProperties['keyAlias']
-                      keyPassword keystoreProperties['keyPassword']
-                      storeFile keystoreProperties['storeFile'] ? file(keystoreProperties['storeFile']) : null
-                      storePassword keystoreProperties['storePassword']
-                  }
-              }
-          '''
-          content = content.replace("    buildTypes {", new_signing + "\n    buildTypes {", 1)
-
-          # Αντικατάσταση release buildType
-          content = re.sub(
-              r'release\s*\{[^}]*\}',
-              '''release {
-                      signingConfig signingConfigs.release
-                      proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-                  }''',
-              content
+          # Βήμα 3: Αλλαγή μόνο του signingConfig line μέσα στο release block
+          content = content.replace(
+              "signingConfig signingConfigs.debug",
+              "signingConfig signingConfigs.release"
           )
 
           with open("flutter/android/app/build.gradle", "w") as f:
@@ -234,6 +221,8 @@ jobs:
 
           print("=== Signing configured ===")
           PYEOF
+          # Εκτύπωση για debugging
+          cat flutter/android/app/build.gradle
 
       - name: Add Android Rust targets
         run: rustup target add aarch64-linux-android armv7-linux-androideabi
