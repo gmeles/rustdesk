@@ -67,6 +67,20 @@ jobs:
           echo "CC=$LLVM_PATH/bin/clang" >> $GITHUB_ENV
           echo "CXX=$LLVM_PATH/bin/clang++" >> $GITHUB_ENV
 
+          # Build libyuv από source (δεν υπάρχει στο brew)
+          git clone https://chromium.googlesource.com/libyuv/libyuv /tmp/libyuv
+          cd /tmp/libyuv
+          mkdir build && cd build
+          cmake .. \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_INSTALL_PREFIX=/opt/homebrew
+          make -j$(sysctl -n hw.logicalcpu)
+          sudo make install
+          echo "=== libyuv installed ==="
+          ls /opt/homebrew/include/libyuv* 2>/dev/null || echo "headers not found"
+          ls /opt/homebrew/lib/libyuv* 2>/dev/null || echo "lib not found"
+
       - name: Cache Cargo
         uses: actions/cache@v4
         with:
