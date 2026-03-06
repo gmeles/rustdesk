@@ -85,32 +85,48 @@ jobs:
           script: |
             core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
-
-      - name: Setup vcpkg
+      
+      
+      - name: Install native libraries via brew
         run: |
-          git clone https://github.com/microsoft/vcpkg ~/vcpkg
-          cd ~/vcpkg
-          git checkout ${{ env.VCPKG_COMMIT_ID }}
-          ./bootstrap-vcpkg.sh -disableMetrics
-          echo "VCPKG_ROOT=$HOME/vcpkg" >> $GITHUB_ENV
+          brew install libvpx aom opus nasm cmake pkg-config llvm create-dmg
+          LLVM_PATH=$(brew --prefix llvm)
+          echo "LIBCLANG_PATH=$LLVM_PATH/lib" >> $GITHUB_ENV
+          echo "PATH=$LLVM_PATH/bin:$PATH" >> $GITHUB_ENV
+          echo "CC=$(brew --prefix llvm)/bin/clang" >> $GITHUB_ENV
+          echo "CXX=$(brew --prefix llvm)/bin/clang++" >> $GITHUB_ENV
 
-      - name: Cache vcpkg
-        uses: actions/cache@v4
-        with:
-          path: ~/vcpkg/installed
-          key: vcpkg-macos-arm64-${{ env.VCPKG_COMMIT_ID }}
-          restore-keys: vcpkg-macos-arm64-
-
-      - name: Install vcpkg dependencies
+      - name: Build macOS app
         run: |
-          ~/vcpkg/vcpkg install \
-            --classic \
-            --triplet arm64-osx \
-            --overlay-ports="${{ github.workspace }}/res/vcpkg" \
-            libvpx \
-            libyuv \
-            opus \
-            aom
+          BREW_PREFIX=$(brew --prefix)
+          SDK=$(xcrun --show-sdk-path)
+
+          export VCPKG_DEFAULT_TRIPLET="arm64-osx"
+          export VCPKGRS_TRIPLET="arm64-osx"
+
+          # Χρήση brew paths αντί για vcpkg
+          export BINDGEN_EXTRA_CLANG_ARGS="\
+            --target=arm64-apple-macos \
+            -I${BREW_PREFIX}/include \
+            -isysroot ${SDK} \
+            -I${SDK}/usr/include"
+
+          export LIBRARY_PATH="${BREW_PREFIX}/lib"
+          export PKG_CONFIG_PATH="${BREW_PREFIX}/lib/pkgconfig"
+
+          # Override vcpkg paths για να δείχνουν στο brew
+          export VCPKG_ROOT="${BREW_PREFIX}"
+          export VPX_INCLUDE_PATH="${BREW_PREFIX}/include"
+          export VPX_LIB_PATH="${BREW_PREFIX}/lib"
+          export AOM_INCLUDE_PATH="${BREW_PREFIX}/include"
+          export AOM_LIB_PATH="${BREW_PREFIX}/lib"
+
+          echo "=== VPX headers ==="
+          ls "${BREW_PREFIX}/include/vpx/" 2>/dev/null || echo "NOT FOUND"
+          echo "=== AOM headers ==="
+          ls "${BREW_PREFIX}/include/aom/" 2>/dev/null || echo "NOT FOUND"
+
+          python build.py --flutter
 
       - name: Install cargo-expand and flutter_rust_bridge_codegen
         run: |
