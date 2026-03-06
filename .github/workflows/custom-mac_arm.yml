@@ -158,7 +158,7 @@ jobs:
 
       - name: Build macOS app
         run: |
-          python build.py --flutter --skip-portable-pack
+          python build.py --flutter
 
       - name: Sign app
         env:
