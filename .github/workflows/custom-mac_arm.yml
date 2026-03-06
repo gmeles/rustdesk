@@ -168,6 +168,41 @@ jobs:
           printf '[env]\nBINDGEN_EXTRA_CLANG_ARGS = { value = "%s", force = true }\n' "$ARGS" > .cargo/config.toml
           echo "=== .cargo/config.toml ==="
           cat .cargo/config.toml
+      - name: Patch scrap build.rs for macOS brew paths
+        run: |
+          BREW=$(brew --prefix)
+          python3 - << PYEOF
+          import subprocess
+          brew = subprocess.check_output(['brew', '--prefix']).decode().strip()
+          sdk = subprocess.check_output(['xcrun', '--show-sdk-path']).decode().strip()
+
+          with open('libs/scrap/build.rs', 'r') as f:
+              content = f.read()
+
+          # Πρόσθεσε explicit clang args στο bindgen builder
+          patch = f'''
+              // macOS brew paths - added by CI
+              #[cfg(target_os = "macos")]
+              let builder = builder
+                  .clang_arg(format!("--target=arm64-apple-macos"))
+                  .clang_arg(format!("-I{brew}/include"))
+                  .clang_arg(format!("-isysroot {sdk}"))
+                  .clang_arg(format!("-mmacosx-version-min=11.0"));
+          '''
+
+          # Βρες το σημείο πριν το .generate() και πρόσθεσε τα args
+          content = content.replace(
+              '.generate()',
+              f'.clang_arg("--target=arm64-apple-macos")\n        .clang_arg("-I{brew}/include")\n        .clang_arg(format!("-isysroot {sdk}"))\n        .clang_arg("-mmacosx-version-min=11.0")\n        .generate()'
+          )
+
+          with open('libs/scrap/build.rs', 'w') as f:
+              f.write(content)
+
+          print('=== Patched build.rs ===')
+          PYEOF
+          echo "=== Checking patch ==="
+          grep -n "arm64\|brew\|isysroot" libs/scrap/build.rs | head -10
 
       - name: Build macOS app
         run: |
