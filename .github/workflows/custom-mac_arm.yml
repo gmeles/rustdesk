@@ -46,9 +46,9 @@ jobs:
           print('build.py patched OK')
           "
 
-                - name: Patch scrap build.rs for arm64 bindgen
-                  run: |
-                    python3 -c "
+      - name: Patch scrap build.rs for arm64 bindgen
+        run: |
+          python3 -c "
           with open('libs/scrap/build.rs', 'r') as f:
               content = f.read()
 
