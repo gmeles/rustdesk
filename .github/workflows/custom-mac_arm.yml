@@ -38,6 +38,20 @@ jobs:
           echo "=== aom_ffi.h ==="
           cat libs/scrap/src/bindings/aom_ffi.h 2>/dev/null || echo "not found"
 
+      - name: Debug gen_vcpkg_package
+        run: |
+          echo "=== gen_vcpkg_package function ==="
+          grep -n "gen_vcpkg_package\|bindgen\|clang_arg\|opaque\|allowlist\|Builder" libs/scrap/build.rs
+          echo ""
+          echo "=== Full build.rs line count ==="
+          wc -l libs/scrap/build.rs
+          echo ""
+          echo "=== Lines 100-200 ==="
+          sed -n '100,200p' libs/scrap/build.rs
+          echo ""
+          echo "=== Lines 200-300 ==="
+          sed -n '200,300p' libs/scrap/build.rs
+
       - name: Patch server config
         env:
           RENDEZVOUS_SERVER: ${{ secrets.RENDEZVOUS_SERVER }}
