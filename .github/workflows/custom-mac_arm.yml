@@ -24,6 +24,20 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Debug scrap build.rs
+        run: |
+          echo "=== libs/scrap/build.rs ==="
+          cat libs/scrap/build.rs
+          echo ""
+          echo "=== libs/scrap/src/bindings/ ==="
+          ls libs/scrap/src/bindings/ 2>/dev/null || echo "no bindings dir"
+          echo ""
+          echo "=== vpx_ffi.h ==="
+          cat libs/scrap/src/bindings/vpx_ffi.h 2>/dev/null || echo "not found"
+          echo ""
+          echo "=== aom_ffi.h ==="
+          cat libs/scrap/src/bindings/aom_ffi.h 2>/dev/null || echo "not found"
+
       - name: Patch server config
         env:
           RENDEZVOUS_SERVER: ${{ secrets.RENDEZVOUS_SERVER }}
@@ -168,7 +182,7 @@ jobs:
           printf '[env]\nBINDGEN_EXTRA_CLANG_ARGS = { value = "%s", force = true }\n' "$ARGS" > .cargo/config.toml
           echo "=== .cargo/config.toml ==="
           cat .cargo/config.toml
-          
+
       - name: Patch scrap build.rs for macOS brew paths
         run: |
           BREW=$(brew --prefix)
