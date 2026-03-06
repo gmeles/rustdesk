@@ -168,6 +168,7 @@ jobs:
           printf '[env]\nBINDGEN_EXTRA_CLANG_ARGS = { value = "%s", force = true }\n' "$ARGS" > .cargo/config.toml
           echo "=== .cargo/config.toml ==="
           cat .cargo/config.toml
+          
       - name: Patch scrap build.rs for macOS brew paths
         run: |
           BREW=$(brew --prefix)
