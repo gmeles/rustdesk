@@ -130,20 +130,27 @@ jobs:
           echo "=== Certificate imported ==="
           security find-identity -v -p codesigning "$KEYCHAIN_PATH"
 
+
       - name: Patch scrap build.rs for arm64 bindgen
         run: |
-          python3 - << 'PYEOF'
+          SDK=$(xcrun --show-sdk-path)
+          python3 - << PYEOF
+          import subprocess
+          sdk = subprocess.check_output(['xcrun', '--show-sdk-path']).decode().strip()
+
           with open('libs/scrap/build.rs', 'r') as f:
               content = f.read()
 
           old = '    b.generate().unwrap().write_to_file(ffi_rs).unwrap();'
-          new = '''    // macOS arm64: explicit target for bindgen
+          new = f'''    // macOS arm64: explicit target for bindgen
               if std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default() == "macos"
                   && std::env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default() == "aarch64"
-              {
+              {{
                   b = b.clang_arg("--target=arm64-apple-macos");
                   b = b.clang_arg("-mmacosx-version-min=11.0");
-              }
+                  b = b.clang_arg("-isysroot{sdk}");
+                  b = b.clang_arg(format!("-I{sdk}/usr/include"));
+              }}
               b.generate().unwrap().write_to_file(ffi_rs).unwrap();'''
 
           if old in content:
@@ -152,13 +159,14 @@ jobs:
                   f.write(content)
               print('=== Patch applied successfully ===')
           else:
-              print('ERROR: target string not found!')
-              for i, line in enumerate(content.split('\n')):
+              print('ERROR: not found')
+              for i, line in enumerate(content.split('\\n')):
                   if 'generate' in line:
                       print(f'Line {i}: {repr(line)}')
           PYEOF
           echo "=== Verify patch ==="
-          grep -n "arm64\|aarch64\|generate\|clang_arg" libs/scrap/build.rs | head -20
+          grep -n "arm64\|isysroot\|clang_arg" libs/scrap/build.rs | head -20
+
 
       - name: Build macOS app
         run: |
