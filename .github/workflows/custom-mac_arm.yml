@@ -149,13 +149,14 @@ jobs:
         run: |
           BREW_PREFIX=$(brew --prefix)
           SDK=$(xcrun --show-sdk-path)
-          LLVM_PATH=$(brew --prefix llvm)
 
-          # Γράψε .cargo/config.toml για σωστό bindgen
+          # Expand τα paths ΠΡΙΝ τα γράψουμε στο TOML
+          BINDGEN_ARGS="--target=arm64-apple-macos -I${BREW_PREFIX}/include -isysroot ${SDK} -I${SDK}/usr/include"
+
           mkdir -p .cargo
           cat > .cargo/config.toml << TOML
           [env]
-          BINDGEN_EXTRA_CLANG_ARGS = "--target=arm64-apple-macos -I${BREW_PREFIX}/include -isysroot ${SDK} -I${SDK}/usr/include"
+          BINDGEN_EXTRA_CLANG_ARGS = "${BINDGEN_ARGS}"
           TOML
 
           export LIBRARY_PATH="${BREW_PREFIX}/lib"
@@ -167,10 +168,6 @@ jobs:
 
           echo "=== .cargo/config.toml ==="
           cat .cargo/config.toml
-          echo "=== AOM headers ==="
-          ls "${BREW_PREFIX}/include/aom/" | head -5
-          echo "=== VPX headers ==="
-          ls "${BREW_PREFIX}/include/vpx/" | head -5
 
           python build.py --flutter
 
