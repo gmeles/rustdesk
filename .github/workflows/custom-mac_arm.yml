@@ -158,22 +158,30 @@ jobs:
           echo "KEYCHAIN_PASSWORD=$KEYCHAIN_PASSWORD" >> $GITHUB_ENV
           echo "=== Certificate imported ==="
           security find-identity -v -p codesigning "$KEYCHAIN_PATH"
-      
+   
       - name: Build macOS app
         run: |
           export VCPKG_INSTALLED="${VCPKG_ROOT}/installed/arm64-osx"
           export VCPKG_DEFAULT_TRIPLET="arm64-osx"
           export VCPKGRS_TRIPLET="arm64-osx"
 
-          export BINDGEN_EXTRA_CLANG_ARGS="-I${VCPKG_INSTALLED}/include -isysroot $(xcrun --show-sdk-path)"
+          SDK=$(xcrun --show-sdk-path)
+
+          # Κρίσιμο: explicit arm64 target για το bindgen
+          export BINDGEN_EXTRA_CLANG_ARGS="\
+            --target=arm64-apple-macos \
+            -I${VCPKG_INSTALLED}/include \
+            -isysroot ${SDK} \
+            -I${SDK}/usr/include"
+
           export LIBRARY_PATH="${VCPKG_INSTALLED}/lib"
           export PKG_CONFIG_PATH="${VCPKG_INSTALLED}/lib/pkgconfig"
 
-          # Debug: έλεγχος headers
+          # Βεβαίωση headers
           echo "=== VPX headers ==="
-          ls "${VCPKG_INSTALLED}/include/vpx/" 2>/dev/null || echo "VPX headers NOT FOUND"
+          ls "${VCPKG_INSTALLED}/include/vpx/" 2>/dev/null || echo "NOT FOUND"
           echo "=== AOM headers ==="
-          ls "${VCPKG_INSTALLED}/include/aom/" 2>/dev/null || echo "AOM headers NOT FOUND"
+          ls "${VCPKG_INSTALLED}/include/aom/" 2>/dev/null || echo "NOT FOUND"
 
           python build.py --flutter
 
