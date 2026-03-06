@@ -140,6 +140,25 @@ jobs:
           echo "=== .cargo/config.toml ==="
           cat .cargo/config.toml
 
+      - name: Patch build.py for arm64
+        run: |
+          # Αλλαγή deployment target από 10.14 σε 11.0 για arm64
+          sed -i "" "s/MACOSX_DEPLOYMENT_TARGET.*10\.14/MACOSX_DEPLOYMENT_TARGET\", \"11.0/g" build.py
+          sed -i "" "s/10\.14/11.0/g" build.py
+          echo "=== build.py deployment target ==="
+          grep -n "deployment\|10\.14\|11\.0" build.py | head -10
+
+      - name: Write cargo config
+        run: |
+          BREW=$(brew --prefix)
+          SDK=$(xcrun --show-sdk-path)
+          mkdir -p .cargo
+          ARGS="--target=arm64-apple-macos -I${BREW}/include -isysroot ${SDK} -I${SDK}/usr/include -mmacosx-version-min=11.0"
+          # force=true ώστε να override υπάρχουσες τιμές
+          printf '[env]\nBINDGEN_EXTRA_CLANG_ARGS = { value = "%s", force = true }\n' "$ARGS" > .cargo/config.toml
+          echo "=== .cargo/config.toml ==="
+          cat .cargo/config.toml
+
       - name: Build macOS app
         run: |
           BREW_PREFIX=$(brew --prefix)
