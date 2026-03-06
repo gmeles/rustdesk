@@ -77,22 +77,18 @@ jobs:
             -DCMAKE_INSTALL_PREFIX=/opt/homebrew
           make -j$(sysctl -n hw.logicalcpu)
           sudo make install
-          # Δημιουργία fake Homebrew Cellar structure που ψάχνει το build.rs
+
+          # Δημιουργία Homebrew Cellar structure που ψάχνει το build.rs
           sudo mkdir -p /opt/homebrew/Cellar/libyuv/HEAD/include
           sudo mkdir -p /opt/homebrew/Cellar/libyuv/HEAD/lib
           sudo cp -r /opt/homebrew/include/libyuv* /opt/homebrew/Cellar/libyuv/HEAD/include/ 2>/dev/null || true
           sudo cp /opt/homebrew/lib/libyuv* /opt/homebrew/Cellar/libyuv/HEAD/lib/ 2>/dev/null || true
-          # Homebrew opt symlink
           sudo mkdir -p /opt/homebrew/opt/libyuv
-          sudo ln -sf /opt/homebrew/Cellar/libyuv/HEAD /opt/homebrew/opt/libyuv/HEAD
           sudo ln -sf /opt/homebrew/Cellar/libyuv/HEAD/include /opt/homebrew/opt/libyuv/include
           sudo ln -sf /opt/homebrew/Cellar/libyuv/HEAD/lib /opt/homebrew/opt/libyuv/lib
-          echo "=== Cellar structure ==="
-          ls /opt/homebrew/Cellar/libyuv/HEAD/lib/
 
           echo "=== libyuv installed ==="
-          ls /opt/homebrew/include/libyuv* 2>/dev/null || echo "headers not found"
-          ls /opt/homebrew/lib/libyuv* 2>/dev/null || echo "lib not found"
+          ls /opt/homebrew/Cellar/libyuv/HEAD/lib/ 2>/dev/null || echo "NOT FOUND"
 
       - name: Cache Cargo
         uses: actions/cache@v4
@@ -153,12 +149,14 @@ jobs:
         run: |
           BREW_PREFIX=$(brew --prefix)
           SDK=$(xcrun --show-sdk-path)
+          LLVM_PATH=$(brew --prefix llvm)
 
-          export BINDGEN_EXTRA_CLANG_ARGS="\
-            --target=arm64-apple-macos \
-            -I${BREW_PREFIX}/include \
-            -isysroot ${SDK} \
-            -I${SDK}/usr/include"
+          # Γράψε .cargo/config.toml για σωστό bindgen
+          mkdir -p .cargo
+          cat > .cargo/config.toml << TOML
+          [env]
+          BINDGEN_EXTRA_CLANG_ARGS = "--target=arm64-apple-macos -I${BREW_PREFIX}/include -isysroot ${SDK} -I${SDK}/usr/include"
+          TOML
 
           export LIBRARY_PATH="${BREW_PREFIX}/lib"
           export PKG_CONFIG_PATH="${BREW_PREFIX}/lib/pkgconfig"
@@ -167,10 +165,12 @@ jobs:
           export AOM_INCLUDE_PATH="${BREW_PREFIX}/include"
           export AOM_LIB_PATH="${BREW_PREFIX}/lib"
 
-          echo "=== VPX headers ==="
-          ls "${BREW_PREFIX}/include/vpx/" 2>/dev/null || echo "NOT FOUND"
+          echo "=== .cargo/config.toml ==="
+          cat .cargo/config.toml
           echo "=== AOM headers ==="
-          ls "${BREW_PREFIX}/include/aom/" 2>/dev/null || echo "NOT FOUND"
+          ls "${BREW_PREFIX}/include/aom/" | head -5
+          echo "=== VPX headers ==="
+          ls "${BREW_PREFIX}/include/vpx/" | head -5
 
           python build.py --flutter
 
