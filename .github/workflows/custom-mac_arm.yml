@@ -3,7 +3,7 @@ name: Interlogic Build MacOS Arm
 on:
   workflow_dispatch:
   push:
-    branches: [ main ]
+    branches: [main]
 
 env:
   RUST_VERSION: "stable"
@@ -11,7 +11,6 @@ env:
   VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
 
 jobs:
-
   # ══════════════════════════════════════════
   #  macOS ARM (Apple Silicon) - Signed + Notarized
   # ══════════════════════════════════════════
@@ -23,40 +22,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
-
-      - name: Debug scrap build.rs
-        run: |
-          echo "=== libs/scrap/build.rs ==="
-          cat libs/scrap/build.rs
-          echo ""
-          echo "=== libs/scrap/src/bindings/ ==="
-          ls libs/scrap/src/bindings/ 2>/dev/null || echo "no bindings dir"
-          echo ""
-          echo "=== vpx_ffi.h ==="
-          cat libs/scrap/src/bindings/vpx_ffi.h 2>/dev/null || echo "not found"
-          echo ""
-          echo "=== aom_ffi.h ==="
-          cat libs/scrap/src/bindings/aom_ffi.h 2>/dev/null || echo "not found"
-
-      - name: Debug gen_vcpkg_package
-        run: |
-          echo "=== gen_vcpkg_package function ==="
-          grep -n "gen_vcpkg_package\|bindgen\|clang_arg\|opaque\|allowlist\|Builder" libs/scrap/build.rs
-          echo ""
-          echo "=== Full build.rs line count ==="
-          wc -l libs/scrap/build.rs
-          echo ""
-          echo "=== Lines 100-200 ==="
-          sed -n '100,200p' libs/scrap/build.rs
-          echo ""
-          echo "=== Lines 200-300 ==="
-          sed -n '200,300p' libs/scrap/build.rs
-
-      - name: Debug gen_vcpkg_package body
-        run: |
-          sed -n '140,175p' libs/scrap/build.rs
-          echo "=== find_package function ==="
-          sed -n '1,100p' libs/scrap/build.rs
 
       - name: Patch server config
         env:
@@ -70,10 +35,51 @@ jobs:
           echo "=== Patch OK ==="
           grep "RENDEZVOUS_SERVERS\|RS_PUB_KEY" libs/hbb_common/src/config.rs
 
+      - name: Patch build.py deployment target
+        run: |
+          python3 -c "
+          with open('build.py', 'r') as f:
+              content = f.read()
+          content = content.replace('10.14', '11.0')
+          with open('build.py', 'w') as f:
+              f.write(content)
+          print('build.py patched OK')
+          "
+
+                - name: Patch scrap build.rs for arm64 bindgen
+                  run: |
+                    python3 -c "
+          with open('libs/scrap/build.rs', 'r') as f:
+              content = f.read()
+
+          old = '    b.generate().unwrap().write_to_file(ffi_rs).unwrap();'
+          new = '''    // macOS arm64: explicit target for bindgen
+              #[cfg(all(target_os = \"macos\", target_arch = \"aarch64\"))]
+              {
+                  b = b.clang_arg(\"--target=arm64-apple-macos\");
+                  b = b.clang_arg(\"-mmacosx-version-min=11.0\");
+              }
+              b.generate().unwrap().write_to_file(ffi_rs).unwrap();'''
+
+          if old in content:
+              content = content.replace(old, new)
+              with open('libs/scrap/build.rs', 'w') as f:
+                  f.write(content)
+              print('build.rs patched OK')
+          else:
+              print('ERROR: target string not found!')
+              for i, line in enumerate(content.split('\n')):
+                  if 'generate' in line:
+                      print(f'Line {i}: {line}')
+              exit(1)
+          "
+          echo "=== Patched lines ==="
+          grep -n "generate\|arm64\|clang_arg\|target" libs/scrap/build.rs | head -20
+
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -164,87 +170,10 @@ jobs:
           echo "=== Certificate imported ==="
           security find-identity -v -p codesigning "$KEYCHAIN_PATH"
 
-      - name: Write cargo config
-        run: |
-          BREW=$(brew --prefix)
-          SDK=$(xcrun --show-sdk-path)
-          mkdir -p .cargo
-          ARGS="--target=arm64-apple-macos -I${BREW}/include -isysroot ${SDK} -I${SDK}/usr/include -mmacosx-version-min=11.0"
-          printf '[env]\nBINDGEN_EXTRA_CLANG_ARGS = "%s"\n' "$ARGS" > .cargo/config.toml
-          echo "=== .cargo/config.toml ==="
-          cat .cargo/config.toml
-
-      - name: Patch build.py for arm64
-        run: |
-          # Δες πώς ακριβώς ορίζεται το deployment target στο build.py
-          echo "=== Before patch ==="
-          grep -n "deployment\|DEPLOYMENT\|10\.14" build.py | head -20
-
-          # Σωστό patch με Python
-          python3 -c "
-          with open('build.py', 'r') as f:
-              content = f.read()
-          content = content.replace('10.14', '11.0')
-          with open('build.py', 'w') as f:
-              f.write(content)
-          print('Patched OK')
-          "
-          echo "=== After patch ==="
-          grep -n "deployment\|DEPLOYMENT\|11\.0" build.py | head -10
-
-      - name: Write cargo config
-        run: |
-          BREW=$(brew --prefix)
-          SDK=$(xcrun --show-sdk-path)
-          mkdir -p .cargo
-          ARGS="--target=arm64-apple-macos -I${BREW}/include -isysroot ${SDK} -I${SDK}/usr/include -mmacosx-version-min=11.0"
-          # force=true ώστε να override υπάρχουσες τιμές
-          printf '[env]\nBINDGEN_EXTRA_CLANG_ARGS = { value = "%s", force = true }\n' "$ARGS" > .cargo/config.toml
-          echo "=== .cargo/config.toml ==="
-          cat .cargo/config.toml
-
-      - name: Patch scrap build.rs for macOS brew paths
-        run: |
-          BREW=$(brew --prefix)
-          python3 - << PYEOF
-          import subprocess
-          brew = subprocess.check_output(['brew', '--prefix']).decode().strip()
-          sdk = subprocess.check_output(['xcrun', '--show-sdk-path']).decode().strip()
-
-          with open('libs/scrap/build.rs', 'r') as f:
-              content = f.read()
-
-          # Πρόσθεσε explicit clang args στο bindgen builder
-          patch = f'''
-              // macOS brew paths - added by CI
-              #[cfg(target_os = "macos")]
-              let builder = builder
-                  .clang_arg(format!("--target=arm64-apple-macos"))
-                  .clang_arg(format!("-I{brew}/include"))
-                  .clang_arg(format!("-isysroot {sdk}"))
-                  .clang_arg(format!("-mmacosx-version-min=11.0"));
-          '''
-
-          # Βρες το σημείο πριν το .generate() και πρόσθεσε τα args
-          content = content.replace(
-              '.generate()',
-              f'.clang_arg("--target=arm64-apple-macos")\n        .clang_arg("-I{brew}/include")\n        .clang_arg(format!("-isysroot {sdk}"))\n        .clang_arg("-mmacosx-version-min=11.0")\n        .generate()'
-          )
-
-          with open('libs/scrap/build.rs', 'w') as f:
-              f.write(content)
-
-          print('=== Patched build.rs ===')
-          PYEOF
-          echo "=== Checking patch ==="
-          grep -n "arm64\|brew\|isysroot" libs/scrap/build.rs | head -10
-
       - name: Build macOS app
         run: |
           BREW_PREFIX=$(brew --prefix)
-          SDK=$(xcrun --show-sdk-path)
           export MACOSX_DEPLOYMENT_TARGET="11.0"
-          export BINDGEN_EXTRA_CLANG_ARGS="--target=arm64-apple-macos -I${BREW_PREFIX}/include -isysroot ${SDK} -I${SDK}/usr/include -mmacosx-version-min=11.0"
           export LIBRARY_PATH="${BREW_PREFIX}/lib"
           export PKG_CONFIG_PATH="${BREW_PREFIX}/lib/pkgconfig"
           export VPX_INCLUDE_PATH="${BREW_PREFIX}/include"
