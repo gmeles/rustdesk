@@ -3,7 +3,7 @@ name: Interlogic Build MacOS Arm
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [ main ]
 
 env:
   RUST_VERSION: "stable"
@@ -11,6 +11,7 @@ env:
   VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
 
 jobs:
+
   # ══════════════════════════════════════════
   #  macOS ARM (Apple Silicon) - Signed + Notarized
   # ══════════════════════════════════════════
@@ -35,51 +36,10 @@ jobs:
           echo "=== Patch OK ==="
           grep "RENDEZVOUS_SERVERS\|RS_PUB_KEY" libs/hbb_common/src/config.rs
 
-      - name: Patch build.py deployment target
-        run: |
-          python3 -c "
-          with open('build.py', 'r') as f:
-              content = f.read()
-          content = content.replace('10.14', '11.0')
-          with open('build.py', 'w') as f:
-              f.write(content)
-          print('build.py patched OK')
-          "
-
-      - name: Patch scrap build.rs for arm64 bindgen
-        run: |
-          python3 -c "
-          with open('libs/scrap/build.rs', 'r') as f:
-              content = f.read()
-
-          old = '    b.generate().unwrap().write_to_file(ffi_rs).unwrap();'
-          new = '''    // macOS arm64: explicit target for bindgen
-              #[cfg(all(target_os = \"macos\", target_arch = \"aarch64\"))]
-              {
-                  b = b.clang_arg(\"--target=arm64-apple-macos\");
-                  b = b.clang_arg(\"-mmacosx-version-min=11.0\");
-              }
-              b.generate().unwrap().write_to_file(ffi_rs).unwrap();'''
-
-          if old in content:
-              content = content.replace(old, new)
-              with open('libs/scrap/build.rs', 'w') as f:
-                  f.write(content)
-              print('build.rs patched OK')
-          else:
-              print('ERROR: target string not found!')
-              for i, line in enumerate(content.split('\n')):
-                  if 'generate' in line:
-                      print(f'Line {i}: {line}')
-              exit(1)
-          "
-          echo "=== Patched lines ==="
-          grep -n "generate\|arm64\|clang_arg\|target" libs/scrap/build.rs | head -20
-
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: '3.11'
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -169,6 +129,36 @@ jobs:
           echo "KEYCHAIN_PASSWORD=$KEYCHAIN_PASSWORD" >> $GITHUB_ENV
           echo "=== Certificate imported ==="
           security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+
+      - name: Patch scrap build.rs for arm64 bindgen
+        run: |
+          python3 - << 'PYEOF'
+          with open('libs/scrap/build.rs', 'r') as f:
+              content = f.read()
+
+          old = '    b.generate().unwrap().write_to_file(ffi_rs).unwrap();'
+          new = '''    // macOS arm64: explicit target for bindgen
+              if std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default() == "macos"
+                  && std::env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default() == "aarch64"
+              {
+                  b = b.clang_arg("--target=arm64-apple-macos");
+                  b = b.clang_arg("-mmacosx-version-min=11.0");
+              }
+              b.generate().unwrap().write_to_file(ffi_rs).unwrap();'''
+
+          if old in content:
+              content = content.replace(old, new)
+              with open('libs/scrap/build.rs', 'w') as f:
+                  f.write(content)
+              print('=== Patch applied successfully ===')
+          else:
+              print('ERROR: target string not found!')
+              for i, line in enumerate(content.split('\n')):
+                  if 'generate' in line:
+                      print(f'Line {i}: {repr(line)}')
+          PYEOF
+          echo "=== Verify patch ==="
+          grep -n "arm64\|aarch64\|generate\|clang_arg" libs/scrap/build.rs | head -20
 
       - name: Build macOS app
         run: |
