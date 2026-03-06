@@ -135,14 +135,17 @@ jobs:
           BREW=$(brew --prefix)
           SDK=$(xcrun --show-sdk-path)
           mkdir -p .cargo
-          printf '[env]\nBINDGEN_EXTRA_CLANG_ARGS = "--target=arm64-apple-macos -I%s/include -isysroot %s -I%s/usr/include"\n' \
-            "$BREW" "$SDK" "$SDK" > .cargo/config.toml
+          ARGS="--target=arm64-apple-macos -I${BREW}/include -isysroot ${SDK} -I${SDK}/usr/include -mmacosx-version-min=11.0"
+          printf '[env]\nBINDGEN_EXTRA_CLANG_ARGS = "%s"\n' "$ARGS" > .cargo/config.toml
           echo "=== .cargo/config.toml ==="
           cat .cargo/config.toml
 
       - name: Build macOS app
         run: |
           BREW_PREFIX=$(brew --prefix)
+          SDK=$(xcrun --show-sdk-path)
+          export MACOSX_DEPLOYMENT_TARGET="11.0"
+          export BINDGEN_EXTRA_CLANG_ARGS="--target=arm64-apple-macos -I${BREW_PREFIX}/include -isysroot ${SDK} -I${SDK}/usr/include -mmacosx-version-min=11.0"
           export LIBRARY_PATH="${BREW_PREFIX}/lib"
           export PKG_CONFIG_PATH="${BREW_PREFIX}/lib/pkgconfig"
           export VPX_INCLUDE_PATH="${BREW_PREFIX}/include"
