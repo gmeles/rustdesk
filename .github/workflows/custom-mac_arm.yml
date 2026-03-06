@@ -52,6 +52,12 @@ jobs:
           echo "=== Lines 200-300 ==="
           sed -n '200,300p' libs/scrap/build.rs
 
+      - name: Debug gen_vcpkg_package body
+        run: |
+          sed -n '140,175p' libs/scrap/build.rs
+          echo "=== find_package function ==="
+          sed -n '1,100p' libs/scrap/build.rs
+
       - name: Patch server config
         env:
           RENDEZVOUS_SERVER: ${{ secrets.RENDEZVOUS_SERVER }}
