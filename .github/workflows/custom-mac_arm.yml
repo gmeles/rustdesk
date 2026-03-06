@@ -65,6 +65,9 @@ jobs:
           LLVM_PATH=$(brew --prefix llvm)
           echo "LIBCLANG_PATH=$LLVM_PATH/lib" >> $GITHUB_ENV
           echo "PATH=$LLVM_PATH/bin:$PATH" >> $GITHUB_ENV
+          # Βεβαιώσου ότι το clang του brew χρησιμοποιείται για bindgen
+          echo "CC=$(brew --prefix llvm)/bin/clang" >> $GITHUB_ENV
+          echo "CXX=$(brew --prefix llvm)/bin/clang++" >> $GITHUB_ENV
 
       - name: Cache Cargo
         uses: actions/cache@v4
@@ -158,6 +161,13 @@ jobs:
 
       - name: Build macOS app
         run: |
+          export VCPKG_INSTALLED="${VCPKG_ROOT}/installed/arm64-osx"
+          export BINDGEN_EXTRA_CLANG_ARGS="\
+            -I${VCPKG_INSTALLED}/include \
+            -I$(xcrun --show-sdk-path)/usr/include"
+          export LIBRARY_PATH="${VCPKG_INSTALLED}/lib:${LIBRARY_PATH}"
+          export PKG_CONFIG_PATH="${VCPKG_INSTALLED}/lib/pkgconfig:${PKG_CONFIG_PATH}"
+
           python build.py --flutter
 
       - name: Sign app
