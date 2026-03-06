@@ -60,12 +60,12 @@ jobs:
 
       - name: Install dependencies
         run: |
-          brew install libvpx aom opus nasm cmake pkg-config llvm create-dmg
-          LLVM_PATH=$(brew --prefix llvm)
-          echo "LIBCLANG_PATH=$LLVM_PATH/lib" >> $GITHUB_ENV
-          echo "PATH=$LLVM_PATH/bin:$PATH" >> $GITHUB_ENV
-          echo "CC=$LLVM_PATH/bin/clang" >> $GITHUB_ENV
-          echo "CXX=$LLVM_PATH/bin/clang++" >> $GITHUB_ENV
+          brew install libvpx aom opus nasm cmake pkg-config create-dmg
+          # ΜΗΝ εγκαθιστάς brew llvm — χρήση system Xcode clang για bindgen
+          XCODE_TOOLCHAIN=$(xcode-select -p)/Toolchains/XcodeDefault.xctoolchain/usr
+          echo "LIBCLANG_PATH=${XCODE_TOOLCHAIN}/lib" >> $GITHUB_ENV
+          echo "CC=${XCODE_TOOLCHAIN}/bin/clang" >> $GITHUB_ENV
+          echo "CXX=${XCODE_TOOLCHAIN}/bin/clang++" >> $GITHUB_ENV
           git clone https://chromium.googlesource.com/libyuv/libyuv /tmp/libyuv
           cd /tmp/libyuv && mkdir build && cd build
           cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_INSTALL_PREFIX=/opt/homebrew
@@ -80,6 +80,8 @@ jobs:
           sudo ln -sf /opt/homebrew/Cellar/libyuv/HEAD/lib /opt/homebrew/opt/libyuv/lib
           echo "=== libyuv ==="
           ls /opt/homebrew/Cellar/libyuv/HEAD/lib/ 2>/dev/null || echo "NOT FOUND"
+          echo "=== LIBCLANG_PATH ==="
+          ls ${XCODE_TOOLCHAIN}/lib/libclang* 2>/dev/null || echo "NOT FOUND"
 
       - name: Cache Cargo
         uses: actions/cache@v4
