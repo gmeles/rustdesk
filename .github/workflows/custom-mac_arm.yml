@@ -142,11 +142,21 @@ jobs:
 
       - name: Patch build.py for arm64
         run: |
-          # Αλλαγή deployment target από 10.14 σε 11.0 για arm64
-          sed -i "" "s/MACOSX_DEPLOYMENT_TARGET.*10\.14/MACOSX_DEPLOYMENT_TARGET\", \"11.0/g" build.py
-          sed -i "" "s/10\.14/11.0/g" build.py
-          echo "=== build.py deployment target ==="
-          grep -n "deployment\|10\.14\|11\.0" build.py | head -10
+          # Δες πώς ακριβώς ορίζεται το deployment target στο build.py
+          echo "=== Before patch ==="
+          grep -n "deployment\|DEPLOYMENT\|10\.14" build.py | head -20
+
+          # Σωστό patch με Python
+          python3 -c "
+          with open('build.py', 'r') as f:
+              content = f.read()
+          content = content.replace('10.14', '11.0')
+          with open('build.py', 'w') as f:
+              f.write(content)
+          print('Patched OK')
+          "
+          echo "=== After patch ==="
+          grep -n "deployment\|DEPLOYMENT\|11\.0" build.py | head -10
 
       - name: Write cargo config
         run: |
