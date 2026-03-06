@@ -8,14 +8,13 @@ on:
 env:
   RUST_VERSION: "stable"
   FLUTTER_VERSION: "3.24.5"
-  VCPKG_COMMIT_ID: "6f29f12e82a8293156836ad81cc9bf5af41fe836"
   VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
 
 jobs:
 
- # ══════════════════════════════════════════
- #  macOS ARM (Apple Silicon) - Signed + Notarized
- # ══════════════════════════════════════════
+  # ══════════════════════════════════════════
+  #  macOS ARM (Apple Silicon) - Signed + Notarized
+  # ══════════════════════════════════════════
   build-macos:
     runs-on: macos-14
 
@@ -61,13 +60,12 @@ jobs:
 
       - name: Install dependencies
         run: |
-          brew install nasm cmake pkg-config llvm create-dmg
+          brew install libvpx aom opus nasm cmake pkg-config llvm create-dmg
           LLVM_PATH=$(brew --prefix llvm)
           echo "LIBCLANG_PATH=$LLVM_PATH/lib" >> $GITHUB_ENV
           echo "PATH=$LLVM_PATH/bin:$PATH" >> $GITHUB_ENV
-          # Βεβαιώσου ότι το clang του brew χρησιμοποιείται για bindgen
-          echo "CC=$(brew --prefix llvm)/bin/clang" >> $GITHUB_ENV
-          echo "CXX=$(brew --prefix llvm)/bin/clang++" >> $GITHUB_ENV
+          echo "CC=$LLVM_PATH/bin/clang" >> $GITHUB_ENV
+          echo "CXX=$LLVM_PATH/bin/clang++" >> $GITHUB_ENV
 
       - name: Cache Cargo
         uses: actions/cache@v4
@@ -78,55 +76,6 @@ jobs:
             target
           key: macos-cargo-${{ env.RUST_VERSION }}-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: macos-cargo-${{ env.RUST_VERSION }}-
-      
-      - name: Export GitHub Actions cache vars for vcpkg
-        uses: actions/github-script@v7
-        with:
-          script: |
-            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
-            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
-      
-      
-      - name: Install native libraries via brew
-        run: |
-          brew install libvpx aom opus nasm cmake pkg-config llvm create-dmg
-          LLVM_PATH=$(brew --prefix llvm)
-          echo "LIBCLANG_PATH=$LLVM_PATH/lib" >> $GITHUB_ENV
-          echo "PATH=$LLVM_PATH/bin:$PATH" >> $GITHUB_ENV
-          echo "CC=$(brew --prefix llvm)/bin/clang" >> $GITHUB_ENV
-          echo "CXX=$(brew --prefix llvm)/bin/clang++" >> $GITHUB_ENV
-
-      - name: Build macOS app
-        run: |
-          BREW_PREFIX=$(brew --prefix)
-          SDK=$(xcrun --show-sdk-path)
-
-          export VCPKG_DEFAULT_TRIPLET="arm64-osx"
-          export VCPKGRS_TRIPLET="arm64-osx"
-
-          # Χρήση brew paths αντί για vcpkg
-          export BINDGEN_EXTRA_CLANG_ARGS="\
-            --target=arm64-apple-macos \
-            -I${BREW_PREFIX}/include \
-            -isysroot ${SDK} \
-            -I${SDK}/usr/include"
-
-          export LIBRARY_PATH="${BREW_PREFIX}/lib"
-          export PKG_CONFIG_PATH="${BREW_PREFIX}/lib/pkgconfig"
-
-          # Override vcpkg paths για να δείχνουν στο brew
-          export VCPKG_ROOT="${BREW_PREFIX}"
-          export VPX_INCLUDE_PATH="${BREW_PREFIX}/include"
-          export VPX_LIB_PATH="${BREW_PREFIX}/lib"
-          export AOM_INCLUDE_PATH="${BREW_PREFIX}/include"
-          export AOM_LIB_PATH="${BREW_PREFIX}/lib"
-
-          echo "=== VPX headers ==="
-          ls "${BREW_PREFIX}/include/vpx/" 2>/dev/null || echo "NOT FOUND"
-          echo "=== AOM headers ==="
-          ls "${BREW_PREFIX}/include/aom/" 2>/dev/null || echo "NOT FOUND"
-
-          python build.py --flutter
 
       - name: Install cargo-expand and flutter_rust_bridge_codegen
         run: |
@@ -149,7 +98,6 @@ jobs:
           CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
           CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
         run: |
-          # Δημιουργία temporary keychain
           KEYCHAIN_PATH=$RUNNER_TEMP/build.keychain
           KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
 
@@ -157,7 +105,6 @@ jobs:
           security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
 
-          # Import certificate
           echo "$CERTIFICATE_P12" | base64 --decode > $RUNNER_TEMP/certificate.p12
           security import "$RUNNER_TEMP/certificate.p12" \
             -k "$KEYCHAIN_PATH" \
@@ -174,30 +121,29 @@ jobs:
           echo "KEYCHAIN_PASSWORD=$KEYCHAIN_PASSWORD" >> $GITHUB_ENV
           echo "=== Certificate imported ==="
           security find-identity -v -p codesigning "$KEYCHAIN_PATH"
-   
+
       - name: Build macOS app
         run: |
-          export VCPKG_INSTALLED="${VCPKG_ROOT}/installed/arm64-osx"
-          export VCPKG_DEFAULT_TRIPLET="arm64-osx"
-          export VCPKGRS_TRIPLET="arm64-osx"
-
+          BREW_PREFIX=$(brew --prefix)
           SDK=$(xcrun --show-sdk-path)
 
-          # Κρίσιμο: explicit arm64 target για το bindgen
           export BINDGEN_EXTRA_CLANG_ARGS="\
             --target=arm64-apple-macos \
-            -I${VCPKG_INSTALLED}/include \
+            -I${BREW_PREFIX}/include \
             -isysroot ${SDK} \
             -I${SDK}/usr/include"
 
-          export LIBRARY_PATH="${VCPKG_INSTALLED}/lib"
-          export PKG_CONFIG_PATH="${VCPKG_INSTALLED}/lib/pkgconfig"
+          export LIBRARY_PATH="${BREW_PREFIX}/lib"
+          export PKG_CONFIG_PATH="${BREW_PREFIX}/lib/pkgconfig"
+          export VPX_INCLUDE_PATH="${BREW_PREFIX}/include"
+          export VPX_LIB_PATH="${BREW_PREFIX}/lib"
+          export AOM_INCLUDE_PATH="${BREW_PREFIX}/include"
+          export AOM_LIB_PATH="${BREW_PREFIX}/lib"
 
-          # Βεβαίωση headers
           echo "=== VPX headers ==="
-          ls "${VCPKG_INSTALLED}/include/vpx/" 2>/dev/null || echo "NOT FOUND"
+          ls "${BREW_PREFIX}/include/vpx/" 2>/dev/null || echo "NOT FOUND"
           echo "=== AOM headers ==="
-          ls "${VCPKG_INSTALLED}/include/aom/" 2>/dev/null || echo "NOT FOUND"
+          ls "${BREW_PREFIX}/include/aom/" 2>/dev/null || echo "NOT FOUND"
 
           python build.py --flutter
 
@@ -208,8 +154,7 @@ jobs:
           APP_PATH=$(find flutter/build/macos/Build/Products/Release -name "*.app" | head -1)
           echo "Signing: $APP_PATH"
 
-          # Sign όλα τα frameworks και dylibs πρώτα
-          find "$APP_PATH" -name "*.dylib" -o -name "*.framework" | while read f; do
+          find "$APP_PATH" \( -name "*.dylib" -o -name "*.framework" \) | while read f; do
             codesign --force --verify --verbose \
               --sign "Developer ID Application: G. MELESANAKIS & CO L.P. ($TEAM_ID)" \
               --options runtime \
@@ -217,7 +162,6 @@ jobs:
               "$f" || true
           done
 
-          # Sign το ίδιο το .app
           codesign --force --verify --verbose --deep \
             --sign "Developer ID Application: G. MELESANAKIS & CO L.P. ($TEAM_ID)" \
             --options runtime \
