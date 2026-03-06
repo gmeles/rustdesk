@@ -77,6 +77,19 @@ jobs:
             -DCMAKE_INSTALL_PREFIX=/opt/homebrew
           make -j$(sysctl -n hw.logicalcpu)
           sudo make install
+          # Δημιουργία fake Homebrew Cellar structure που ψάχνει το build.rs
+          sudo mkdir -p /opt/homebrew/Cellar/libyuv/HEAD/include
+          sudo mkdir -p /opt/homebrew/Cellar/libyuv/HEAD/lib
+          sudo cp -r /opt/homebrew/include/libyuv* /opt/homebrew/Cellar/libyuv/HEAD/include/ 2>/dev/null || true
+          sudo cp /opt/homebrew/lib/libyuv* /opt/homebrew/Cellar/libyuv/HEAD/lib/ 2>/dev/null || true
+          # Homebrew opt symlink
+          sudo mkdir -p /opt/homebrew/opt/libyuv
+          sudo ln -sf /opt/homebrew/Cellar/libyuv/HEAD /opt/homebrew/opt/libyuv/HEAD
+          sudo ln -sf /opt/homebrew/Cellar/libyuv/HEAD/include /opt/homebrew/opt/libyuv/include
+          sudo ln -sf /opt/homebrew/Cellar/libyuv/HEAD/lib /opt/homebrew/opt/libyuv/lib
+          echo "=== Cellar structure ==="
+          ls /opt/homebrew/Cellar/libyuv/HEAD/lib/
+
           echo "=== libyuv installed ==="
           ls /opt/homebrew/include/libyuv* 2>/dev/null || echo "headers not found"
           ls /opt/homebrew/lib/libyuv* 2>/dev/null || echo "lib not found"
