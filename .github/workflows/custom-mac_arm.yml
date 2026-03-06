@@ -14,8 +14,8 @@ env:
 jobs:
 
  # ══════════════════════════════════════════
-  #  macOS ARM (Apple Silicon) - Signed + Notarized
-  # ══════════════════════════════════════════
+ #  macOS ARM (Apple Silicon) - Signed + Notarized
+ # ══════════════════════════════════════════
   build-macos:
     runs-on: macos-14
 
