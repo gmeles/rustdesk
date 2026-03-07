@@ -31,6 +31,19 @@ jobs:
           echo "=== Patch OK ==="
           grep "RENDEZVOUS_SERVERS\|RS_PUB_KEY" libs/hbb_common/src/config.rs
 
+      - name: Patch build.py deployment target
+        run: |
+          python3 -c "
+          f = open('build.py', 'r')
+          c = f.read()
+          f.close()
+          c = c.replace('10.14', '14.0')
+          f = open('build.py', 'w')
+          f.write(c)
+          f.close()
+          print('build.py patched OK')
+          "
+
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
@@ -74,6 +87,15 @@ jobs:
           sudo ln -sf /opt/homebrew/Cellar/libyuv/HEAD/lib /opt/homebrew/opt/libyuv/lib
           echo "=== libyuv ==="
           ls /opt/homebrew/Cellar/libyuv/HEAD/lib/ 2>/dev/null || echo "NOT FOUND"
+
+      - name: Set global build environment
+        run: |
+          SDK=$(xcrun --show-sdk-path)
+          XCODE_PATH=$(xcode-select -p)
+          echo "MACOSX_DEPLOYMENT_TARGET=14.0" >> $GITHUB_ENV
+          echo "SDKROOT=$SDK" >> $GITHUB_ENV
+          echo "BINDGEN_EXTRA_CLANG_ARGS=--target=arm64-apple-macos -isysroot$SDK -I$SDK/usr/include -mmacosx-version-min=14.0" >> $GITHUB_ENV
+          echo "PATH=${XCODE_PATH}/Toolchains/XcodeDefault.xctoolchain/usr/bin:$PATH" >> $GITHUB_ENV
 
       - name: Cache Cargo
         uses: actions/cache@v4
@@ -130,15 +152,6 @@ jobs:
           echo "=== Verify patch ==="
           grep -n "arm64\|isysroot\|clang_arg" libs/scrap/build.rs | head -20
 
-      - name: Set global build environment
-        run: |
-          SDK=$(xcrun --show-sdk-path)
-          XCODE_PATH=$(xcode-select -p)
-          echo "MACOSX_DEPLOYMENT_TARGET=11.0" >> $GITHUB_ENV
-          echo "SDKROOT=$SDK" >> $GITHUB_ENV
-          echo "BINDGEN_EXTRA_CLANG_ARGS=--target=arm64-apple-macos -isysroot$SDK -I$SDK/usr/include -mmacosx-version-min=11.0" >> $GITHUB_ENV
-          echo "PATH=${XCODE_PATH}/Toolchains/XcodeDefault.xctoolchain/usr/bin:$PATH" >> $GITHUB_ENV
-
       - name: Build macOS app
         run: |
           BREW_PREFIX=$(brew --prefix)
@@ -152,7 +165,7 @@ jobs:
           export AOM_LIB_PATH="${BREW_PREFIX}/lib"
           rm -rf target/release/build/scrap-* 2>/dev/null || true
           python build.py --flutter
-          
+
       - name: Sign app
         env:
           TEAM_ID: ${{ secrets.MACOS_NOTARIZATION_TEAM_ID }}

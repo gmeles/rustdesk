@@ -13,7 +13,7 @@ new = (
     '        && std::env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default() == "aarch64"\n'
     '    {\n'
     '        b = b.clang_arg("--target=arm64-apple-macos");\n'
-    '        b = b.clang_arg("-mmacosx-version-min=11.0");\n'
+    '        b = b.clang_arg("-mmacosx-version-min=14.0");\n'
     f'        b = b.clang_arg("-isysroot{sdk}");\n'
     f'        b = b.clang_arg("-I{sdk}/usr/include");\n'
     '    }\n'
