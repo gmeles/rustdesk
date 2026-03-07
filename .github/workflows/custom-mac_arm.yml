@@ -68,7 +68,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          brew install libvpx aom opus nasm cmake pkg-config create-dmg
+          brew install libvpx aom opus nasm cmake pkg-config create-dmg libvmaf
           XCODE_TOOLCHAIN=$(xcode-select -p)/Toolchains/XcodeDefault.xctoolchain/usr
           echo "LIBCLANG_PATH=${XCODE_TOOLCHAIN}/lib" >> $GITHUB_ENV
           echo "CC=${XCODE_TOOLCHAIN}/bin/clang" >> $GITHUB_ENV
@@ -163,6 +163,8 @@ jobs:
           export VPX_LIB_PATH="${BREW_PREFIX}/lib"
           export AOM_INCLUDE_PATH="${BREW_PREFIX}/include"
           export AOM_LIB_PATH="${BREW_PREFIX}/lib"
+          # Vmaf που χρειάζεται το aom
+          export RUSTFLAGS="-L${BREW_PREFIX}/lib -lvmaf"
           rm -rf target/release/build/scrap-* 2>/dev/null || true
           python build.py --flutter
 
