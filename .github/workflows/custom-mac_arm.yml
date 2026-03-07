@@ -125,6 +125,7 @@ jobs:
           [ -f flutter/lib/generated_bridge.dart ] && echo "=== Bridge dart OK ===" || exit 1
           [ -f flutter/macos/Runner/bridge_generated.h ] && echo "=== Bridge header OK ===" || exit 1
 
+          
       - name: Import Developer ID Certificate
         env:
           CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
@@ -153,6 +154,12 @@ jobs:
           security find-identity -v "$KEYCHAIN_PATH"
           echo "=== Codesigning identities ==="
           security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+          echo "=== All identities in keychain ==="
+          security find-identity -v "$KEYCHAIN_PATH"
+          echo "=== All identities in ALL keychains ==="
+          security find-identity -v
+          echo "=== Certificate info ==="
+          openssl pkcs12 -in $RUNNER_TEMP/certificate.p12 -nokeys -passin pass:"$CERTIFICATE_PASSWORD" 2>/dev/null | openssl x509 -noout -subject -issuer 2>/dev/null || echo "Could not read cert"
 
       - name: Patch scrap build.rs for arm64 bindgen
         run: |
@@ -180,21 +187,33 @@ jobs:
         env:
           TEAM_ID: ${{ secrets.MACOS_NOTARIZATION_TEAM_ID }}
         run: |
+          # Βρες το identity δυναμικά
+          IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | grep "Developer ID Application" | head -1 | awk '{print $2}')
+          echo "Using identity: $IDENTITY"
+          if [ -z "$IDENTITY" ]; then
+            echo "ERROR: No Developer ID Application identity found!"
+            security find-identity -v "$KEYCHAIN_PATH"
+            exit 1
+          fi
+
           APP_PATH=$(find flutter/build/macos/Build/Products/Release -name "*.app" | head -1)
           echo "Signing: $APP_PATH"
+
           find "$APP_PATH" \( -name "*.dylib" -o -name "*.framework" \) | while read f; do
             codesign --force --verify --verbose \
-              --sign "Developer ID Application: G. MELESANAKIS & CO L.P. ($TEAM_ID)" \
+              --sign "$IDENTITY" \
               --options runtime \
               --keychain "$KEYCHAIN_PATH" \
               "$f" || true
           done
+
           codesign --force --verify --verbose --deep \
-            --sign "Developer ID Application: G. MELESANAKIS & CO L.P. ($TEAM_ID)" \
+            --sign "$IDENTITY" \
             --options runtime \
             --entitlements "${{ github.workspace }}/flutter/macos/Runner/DebugProfile.entitlements" \
             --keychain "$KEYCHAIN_PATH" \
             "$APP_PATH"
+
           codesign --verify --deep --strict --verbose=2 "$APP_PATH"
           echo "=== Signing OK ==="
 
