@@ -12,9 +12,6 @@ env:
 
 jobs:
 
-  # ══════════════════════════════════════════
-  #  macOS ARM (Apple Silicon) - Signed + Notarized
-  # ══════════════════════════════════════════
   build-macos:
     runs-on: macos-14
 
@@ -29,10 +26,8 @@ jobs:
           RENDEZVOUS_SERVER: ${{ secrets.RENDEZVOUS_SERVER }}
           RS_PUB_KEY: ${{ secrets.RS_PUB_KEY }}
         run: |
-          sed -i "" "s|RENDEZVOUS_SERVERS: \&\[&str\] = \&\[\"[^\"]*\"\]|RENDEZVOUS_SERVERS: \&[\&str] = \&[\"$RENDEZVOUS_SERVER\"]|" \
-            libs/hbb_common/src/config.rs
-          sed -i "" "s|RS_PUB_KEY: \&str = \"[^\"]*\"|RS_PUB_KEY: \&str = \"$RS_PUB_KEY\"|" \
-            libs/hbb_common/src/config.rs
+          sed -i "" "s|RENDEZVOUS_SERVERS: \&\[&str\] = \&\[\"[^\"]*\"\]|RENDEZVOUS_SERVERS: \&[\&str] = \&[\"$RENDEZVOUS_SERVER\"]|" libs/hbb_common/src/config.rs
+          sed -i "" "s|RS_PUB_KEY: \&str = \"[^\"]*\"|RS_PUB_KEY: \&str = \"$RS_PUB_KEY\"|" libs/hbb_common/src/config.rs
           echo "=== Patch OK ==="
           grep "RENDEZVOUS_SERVERS\|RS_PUB_KEY" libs/hbb_common/src/config.rs
 
@@ -61,7 +56,6 @@ jobs:
       - name: Install dependencies
         run: |
           brew install libvpx aom opus nasm cmake pkg-config create-dmg
-          # Χρήση system Xcode clang για bindgen (όχι brew LLVM)
           XCODE_TOOLCHAIN=$(xcode-select -p)/Toolchains/XcodeDefault.xctoolchain/usr
           echo "LIBCLANG_PATH=${XCODE_TOOLCHAIN}/lib" >> $GITHUB_ENV
           echo "CC=${XCODE_TOOLCHAIN}/bin/clang" >> $GITHUB_ENV
@@ -132,53 +126,16 @@ jobs:
 
       - name: Patch scrap build.rs for arm64 bindgen
         run: |
-          python3 - << 'PYEOF'
-          import subprocess
+          python3 .github/patch_build_rs.py
+          echo "=== Verify patch ==="
+          grep -n "arm64\|isysroot\|clang_arg" libs/scrap/build.rs | head -20
 
-          sdk = subprocess.check_output(['xcrun', '--show-sdk-path']).decode().strip()
-
-          with open('libs/scrap/build.rs', 'r') as f:
-              content = f.read()
-
-          old = '    b.generate().unwrap().write_to_file(ffi_rs).unwrap();'
-          new = f'''    // macOS arm64: explicit target for bindgen
-              if std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default() == "macos"
-                  && std::env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default() == "aarch64"
-              {{
-                  b = b.clang_arg("--target=arm64-apple-macos");
-                  b = b.clang_arg("-mmacosx-version-min=11.0");
-                  b = b.clang_arg("-isysroot{sdk}");
-                  b = b.clang_arg(format!("-I{sdk}/usr/include"));
-              }}
-              b.generate().unwrap().write_to_file(ffi_rs).unwrap();'''
-
-          if old in content:
-              content = content.replace(old, new)
-              with open('libs/scrap/build.rs', 'w') as f:
-                  f.write(content)
-              print('=== Patch applied successfully ===')
-          else:
-              print('ERROR: target string not found!')
-              for i, line in enumerate(content.split('\n')):
-                  if 'generate' in line:
-                      print(f'Line {i}: {repr(line)}')
-          PYEOF
-                    echo "=== Verify patch ==="
-                    grep -n "arm64\|isysroot\|clang_arg" libs/scrap/build.rs | head -20
-
-                - name: Build macOS app
-                  run: |
-                    BREW_PREFIX=$(brew --prefix)
-                    XCODE_PATH=$(xcode-select -p)
-
-                    # Ρητή δήλωση linker για aarch64
-                    mkdir -p .cargo
-                    cat >> .cargo/config.toml << 'EOF'
-
-          [target.aarch64-apple-darwin]
-          linker = "clang"
-          EOF
-
+      - name: Build macOS app
+        run: |
+          BREW_PREFIX=$(brew --prefix)
+          XCODE_PATH=$(xcode-select -p)
+          mkdir -p .cargo
+          printf '\n[target.aarch64-apple-darwin]\nlinker = "clang"\n' >> .cargo/config.toml
           export MACOSX_DEPLOYMENT_TARGET="11.0"
           export PATH="${XCODE_PATH}/Toolchains/XcodeDefault.xctoolchain/usr/bin:$PATH"
           export LIBRARY_PATH="${BREW_PREFIX}/lib"
