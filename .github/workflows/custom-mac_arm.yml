@@ -61,7 +61,7 @@ jobs:
       - name: Install dependencies
         run: |
           brew install libvpx aom opus nasm cmake pkg-config create-dmg
-          # ΜΗΝ εγκαθιστάς brew llvm — χρήση system Xcode clang για bindgen
+          # Χρήση system Xcode clang για bindgen (όχι brew LLVM)
           XCODE_TOOLCHAIN=$(xcode-select -p)/Toolchains/XcodeDefault.xctoolchain/usr
           echo "LIBCLANG_PATH=${XCODE_TOOLCHAIN}/lib" >> $GITHUB_ENV
           echo "CC=${XCODE_TOOLCHAIN}/bin/clang" >> $GITHUB_ENV
@@ -80,8 +80,6 @@ jobs:
           sudo ln -sf /opt/homebrew/Cellar/libyuv/HEAD/lib /opt/homebrew/opt/libyuv/lib
           echo "=== libyuv ==="
           ls /opt/homebrew/Cellar/libyuv/HEAD/lib/ 2>/dev/null || echo "NOT FOUND"
-          echo "=== LIBCLANG_PATH ==="
-          ls ${XCODE_TOOLCHAIN}/lib/libclang* 2>/dev/null || echo "NOT FOUND"
 
       - name: Cache Cargo
         uses: actions/cache@v4
@@ -132,12 +130,11 @@ jobs:
           echo "=== Certificate imported ==="
           security find-identity -v -p codesigning "$KEYCHAIN_PATH"
 
-
       - name: Patch scrap build.rs for arm64 bindgen
         run: |
-          SDK=$(xcrun --show-sdk-path)
-          python3 - << PYEOF
+          python3 - << 'PYEOF'
           import subprocess
+
           sdk = subprocess.check_output(['xcrun', '--show-sdk-path']).decode().strip()
 
           with open('libs/scrap/build.rs', 'r') as f:
@@ -161,27 +158,37 @@ jobs:
                   f.write(content)
               print('=== Patch applied successfully ===')
           else:
-              print('ERROR: not found')
-              for i, line in enumerate(content.split('\\n')):
+              print('ERROR: target string not found!')
+              for i, line in enumerate(content.split('\n')):
                   if 'generate' in line:
                       print(f'Line {i}: {repr(line)}')
           PYEOF
-          echo "=== Verify patch ==="
-          grep -n "arm64\|isysroot\|clang_arg" libs/scrap/build.rs | head -20
+                    echo "=== Verify patch ==="
+                    grep -n "arm64\|isysroot\|clang_arg" libs/scrap/build.rs | head -20
 
+                - name: Build macOS app
+                  run: |
+                    BREW_PREFIX=$(brew --prefix)
+                    XCODE_PATH=$(xcode-select -p)
 
-      - name: Build macOS app
-        run: |
-          BREW_PREFIX=$(brew --prefix)
-          export MACOSX_DEPLOYMENT_TARGET="11.0"
-          export LIBRARY_PATH="${BREW_PREFIX}/lib"
-          export PKG_CONFIG_PATH="${BREW_PREFIX}/lib/pkgconfig"
-          export VPX_INCLUDE_PATH="${BREW_PREFIX}/include"
-          export VPX_LIB_PATH="${BREW_PREFIX}/lib"
-          export AOM_INCLUDE_PATH="${BREW_PREFIX}/include"
-          export AOM_LIB_PATH="${BREW_PREFIX}/lib"
-          rm -rf target/release/build/scrap-* 2>/dev/null || true
-          python build.py --flutter
+                    # Ρητή δήλωση linker για aarch64
+                    mkdir -p .cargo
+                    cat >> .cargo/config.toml << 'EOF'
+
+          [target.aarch64-apple-darwin]
+          linker = "clang"
+          EOF
+
+                    export MACOSX_DEPLOYMENT_TARGET="11.0"
+                    export PATH="${XCODE_PATH}/Toolchains/XcodeDefault.xctoolchain/usr/bin:$PATH"
+                    export LIBRARY_PATH="${BREW_PREFIX}/lib"
+                    export PKG_CONFIG_PATH="${BREW_PREFIX}/lib/pkgconfig"
+                    export VPX_INCLUDE_PATH="${BREW_PREFIX}/include"
+                    export VPX_LIB_PATH="${BREW_PREFIX}/lib"
+                    export AOM_INCLUDE_PATH="${BREW_PREFIX}/include"
+                    export AOM_LIB_PATH="${BREW_PREFIX}/lib"
+                    rm -rf target/release/build/scrap-* 2>/dev/null || true
+                    python build.py --flutter
 
       - name: Sign app
         env:
