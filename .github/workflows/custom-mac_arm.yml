@@ -120,8 +120,10 @@ jobs:
           export PATH="$HOME/.cargo/bin:$PATH"
           flutter_rust_bridge_codegen \
             --rust-input src/flutter_ffi.rs \
-            --dart-output flutter/lib/generated_bridge.dart
-          [ -f flutter/lib/generated_bridge.dart ] && echo "=== Bridge OK ===" || exit 1
+            --dart-output flutter/lib/generated_bridge.dart \
+            --c-output flutter/macos/Runner/bridge_generated.h
+          [ -f flutter/lib/generated_bridge.dart ] && echo "=== Bridge dart OK ===" || exit 1
+          [ -f flutter/macos/Runner/bridge_generated.h ] && echo "=== Bridge header OK ===" || exit 1
 
       - name: Import Developer ID Certificate
         env:
