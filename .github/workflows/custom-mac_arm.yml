@@ -179,16 +179,16 @@ jobs:
           linker = "clang"
           EOF
 
-                    export MACOSX_DEPLOYMENT_TARGET="11.0"
-                    export PATH="${XCODE_PATH}/Toolchains/XcodeDefault.xctoolchain/usr/bin:$PATH"
-                    export LIBRARY_PATH="${BREW_PREFIX}/lib"
-                    export PKG_CONFIG_PATH="${BREW_PREFIX}/lib/pkgconfig"
-                    export VPX_INCLUDE_PATH="${BREW_PREFIX}/include"
-                    export VPX_LIB_PATH="${BREW_PREFIX}/lib"
-                    export AOM_INCLUDE_PATH="${BREW_PREFIX}/include"
-                    export AOM_LIB_PATH="${BREW_PREFIX}/lib"
-                    rm -rf target/release/build/scrap-* 2>/dev/null || true
-                    python build.py --flutter
+          export MACOSX_DEPLOYMENT_TARGET="11.0"
+          export PATH="${XCODE_PATH}/Toolchains/XcodeDefault.xctoolchain/usr/bin:$PATH"
+          export LIBRARY_PATH="${BREW_PREFIX}/lib"
+          export PKG_CONFIG_PATH="${BREW_PREFIX}/lib/pkgconfig"
+          export VPX_INCLUDE_PATH="${BREW_PREFIX}/include"
+          export VPX_LIB_PATH="${BREW_PREFIX}/lib"
+          export AOM_INCLUDE_PATH="${BREW_PREFIX}/include"
+          export AOM_LIB_PATH="${BREW_PREFIX}/lib"
+          rm -rf target/release/build/scrap-* 2>/dev/null || true
+          python build.py --flutter
 
       - name: Sign app
         env:
