@@ -130,14 +130,20 @@ jobs:
           echo "=== Verify patch ==="
           grep -n "arm64\|isysroot\|clang_arg" libs/scrap/build.rs | head -20
 
+      - name: Set global build environment
+        run: |
+          SDK=$(xcrun --show-sdk-path)
+          XCODE_PATH=$(xcode-select -p)
+          echo "MACOSX_DEPLOYMENT_TARGET=11.0" >> $GITHUB_ENV
+          echo "SDKROOT=$SDK" >> $GITHUB_ENV
+          echo "BINDGEN_EXTRA_CLANG_ARGS=--target=arm64-apple-macos -isysroot$SDK -I$SDK/usr/include -mmacosx-version-min=11.0" >> $GITHUB_ENV
+          echo "PATH=${XCODE_PATH}/Toolchains/XcodeDefault.xctoolchain/usr/bin:$PATH" >> $GITHUB_ENV
+
       - name: Build macOS app
         run: |
           BREW_PREFIX=$(brew --prefix)
-          XCODE_PATH=$(xcode-select -p)
           mkdir -p .cargo
           printf '\n[target.aarch64-apple-darwin]\nlinker = "clang"\n' >> .cargo/config.toml
-          export MACOSX_DEPLOYMENT_TARGET="11.0"
-          export PATH="${XCODE_PATH}/Toolchains/XcodeDefault.xctoolchain/usr/bin:$PATH"
           export LIBRARY_PATH="${BREW_PREFIX}/lib"
           export PKG_CONFIG_PATH="${BREW_PREFIX}/lib/pkgconfig"
           export VPX_INCLUDE_PATH="${BREW_PREFIX}/include"
@@ -146,7 +152,7 @@ jobs:
           export AOM_LIB_PATH="${BREW_PREFIX}/lib"
           rm -rf target/release/build/scrap-* 2>/dev/null || true
           python build.py --flutter
-
+          
       - name: Sign app
         env:
           TEAM_ID: ${{ secrets.MACOS_NOTARIZATION_TEAM_ID }}
