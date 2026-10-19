@@ -1,4 +1,4 @@
-name: NiceHome Windows client
+name: Interlogic Windows client
 
 on:
   workflow_dispatch:
@@ -28,7 +28,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: nicehome-windows-${{ github.ref }}
+  group: interlogic-windows-${{ github.ref }}
   cancel-in-progress: false
 
 env:
@@ -86,7 +86,7 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Embed NiceHome server defaults
+      - name: Embed Interlogic branding and server defaults
         shell: bash
         env:
           ID_SERVER: ${{ inputs.id_server }}
@@ -300,7 +300,8 @@ jobs:
           sed -i '/dpiAware/d' res/manifest.xml
           pushd ./libs/portable
           pip3 install -r requirements.txt
-          python3 ./generate.py -f ../../rustdesk/ -o . -e ../../rustdesk/rustdesk.exe
+          mv ../../rustdesk/rustdesk.exe ../../rustdesk/Interlogic-Support.exe
+          python3 ./generate.py -f ../../rustdesk/ -o . -e ../../rustdesk/Interlogic-Support.exe
           popd
           mkdir -p ./SignOutput
           mv ./target/release/rustdesk-portable-packer.exe ./SignOutput/rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}.exe
@@ -308,15 +309,15 @@ jobs:
       - name: Name executable and record provenance
         shell: pwsh
         run: |
-          Move-Item ./SignOutput/rustdesk-*.exe ./SignOutput/NiceHome-Support.exe
-          Get-FileHash ./SignOutput/NiceHome-Support.exe -Algorithm SHA256 | Format-List | Out-File ./SignOutput/SHA256.txt
+          Move-Item ./SignOutput/rustdesk-*.exe ./SignOutput/Interlogic-Support.exe
+          Get-FileHash ./SignOutput/Interlogic-Support.exe -Algorithm SHA256 | Format-List | Out-File ./SignOutput/SHA256.txt
           git rev-parse HEAD | Out-File ./SignOutput/SOURCE_COMMIT.txt
           git diff --submodule=diff | Out-File -Encoding utf8 ./SignOutput/build-customization.patch
 
-      - name: Upload NiceHome executable
+      - name: Upload Interlogic executable
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: NiceHome-Support-windows-x64
+          name: Interlogic-Support-windows-x64
           path: ./SignOutput/
           if-no-files-found: error
           retention-days: 14
