@@ -33,3 +33,37 @@ if count != 1:
     raise ValueError('Upstream RS_PUB_KEY changed; review customization before building')
 source.write_text(text)
 print('Applied public server defaults; no account credentials embedded.')
+
+# Branding is applied only by this manual Windows workflow.
+import shutil
+branding = Path(__file__).resolve().parents[1] / 'branding' / 'interlogic'
+app_name = 'Interlogic Support'
+app_anchor = 'pub static ref APP_NAME: RwLock<String> = RwLock::new("RustDesk".to_owned());'
+text = source.read_text()
+if text.count(app_anchor) != 1:
+    raise ValueError('Upstream APP_NAME changed; review branding')
+text = text.replace(app_anchor, 'pub static ref APP_NAME: RwLock<String> = RwLock::new(' + json.dumps(app_name) + '.to_owned());')
+rc_path = Path('flutter/windows/runner/Runner.rc')
+rc = rc_path.read_text()
+for field, old, new in (
+    ('CompanyName', 'Purslane Tech Pte. Ltd.', 'Interlogic'),
+    ('FileDescription', 'RustDesk Remote Desktop', app_name),
+    ('ProductName', 'RustDesk', app_name),
+):
+    old_value = f'VALUE "{field}", "{old}"'
+    if rc.count(old_value) != 1:
+        raise ValueError(f'Upstream Windows resource {field} changed; review branding')
+    rc = rc.replace(old_value, f'VALUE "{field}", "{new}"')
+for asset in ('logo.png', 'icon.png', 'icon.ico'):
+    if not (branding / asset).is_file():
+        raise ValueError(f'Missing branding asset: {asset}')
+source.write_text(text)
+rc_path.write_text(rc)
+for target in ('res/icon.ico', 'res/tray-icon.ico', 'flutter/windows/runner/resources/app_icon.ico'):
+    shutil.copyfile(branding / 'icon.ico', target)
+for target in ('res/icon.png', 'flutter/assets/icon.png'):
+    shutil.copyfile(branding / 'icon.png', target)
+shutil.copyfile(branding / 'icon.ico', 'flutter/assets/icon.ico')
+for filename in ('logo.png', 'logo_light.png', 'logo_dark.png'):
+    shutil.copyfile(branding / 'logo.png', Path('flutter/assets') / filename)
+print('Applied Interlogic Support branding; upstream license/copyright retained.')
