@@ -6,12 +6,12 @@ on:
       id_server:
         description: ID server (hostname:port)
         required: true
-        default: support.nicehome.gr:22116
+        default: support.nicehome.gr:21116
         type: string
       relay_server:
         description: Relay server (hostname:port)
         required: true
-        default: support.nicehome.gr:22117
+        default: support.nicehome.gr:21117
         type: string
       api_server:
         description: HTTPS API origin
