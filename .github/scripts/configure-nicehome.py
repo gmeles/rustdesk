@@ -3,6 +3,7 @@ import base64
 import json
 import os
 import re
+import shutil
 from pathlib import Path
 
 values = {
@@ -21,6 +22,7 @@ if not re.fullmatch(r'https://[A-Za-z0-9.-]+(?::[0-9]{1,5})?', values['api-serve
     raise ValueError('API_SERVER: expected HTTPS origin without trailing slash')
 if len(base64.b64decode(values['key'], validate=True)) != 32:
     raise ValueError('PUBLIC_KEY must encode 32 bytes')
+
 source = Path('libs/hbb_common/src/config.rs')
 text = source.read_text()
 anchor = 'pub static ref DEFAULT_SETTINGS: RwLock<HashMap<String, String>> = Default::default();'
@@ -35,14 +37,26 @@ source.write_text(text)
 print('Applied public server defaults; no account credentials embedded.')
 
 # Branding is applied only by this manual Windows workflow.
-import shutil
-branding = Path(__file__).resolve().parents[1] / 'branding' / 'interlogic'
-app_name = 'Interlogic Support'
+brand = os.environ.get('BRAND', 'interlogic').strip()
+if not re.fullmatch(r'[A-Za-z0-9_-]+', brand):
+    raise ValueError('BRAND must contain only letters, digits, "-" or "_"')
+
+branding_root = Path(__file__).resolve().parents[1] / 'branding'
+branding = branding_root / brand
+if not branding.is_dir():
+    available = sorted(p.name for p in branding_root.iterdir() if p.is_dir())
+    raise ValueError(f'Unknown brand "{brand}". Available: {", ".join(available) or "(none found)"}')
+
+app_name = os.environ.get('APP_NAME', 'Interlogic Support').strip()
+if not app_name:
+    raise ValueError('APP_NAME must not be empty')
+
 app_anchor = 'pub static ref APP_NAME: RwLock<String> = RwLock::new("RustDesk".to_owned());'
 text = source.read_text()
 if text.count(app_anchor) != 1:
     raise ValueError('Upstream APP_NAME changed; review branding')
 text = text.replace(app_anchor, 'pub static ref APP_NAME: RwLock<String> = RwLock::new(' + json.dumps(app_name) + '.to_owned());')
+
 rc_path = Path('flutter/windows/runner/Runner.rc')
 rc = rc_path.read_text()
 for field, old, new in (
@@ -54,11 +68,14 @@ for field, old, new in (
     if rc.count(old_value) != 1:
         raise ValueError(f'Upstream Windows resource {field} changed; review branding')
     rc = rc.replace(old_value, f'VALUE "{field}", "{new}"')
+
 for asset in ('logo.png', 'icon.png', 'icon.ico'):
     if not (branding / asset).is_file():
-        raise ValueError(f'Missing branding asset: {asset}')
+        raise ValueError(f'Missing branding asset for brand "{brand}": {asset}')
+
 source.write_text(text)
 rc_path.write_text(rc)
+
 for target in ('res/icon.ico', 'res/tray-icon.ico', 'flutter/windows/runner/resources/app_icon.ico'):
     shutil.copyfile(branding / 'icon.ico', target)
 for target in ('res/icon.png', 'flutter/assets/icon.png'):
@@ -66,4 +83,5 @@ for target in ('res/icon.png', 'flutter/assets/icon.png'):
 shutil.copyfile(branding / 'icon.ico', 'flutter/assets/icon.ico')
 for filename in ('logo.png', 'logo_light.png', 'logo_dark.png'):
     shutil.copyfile(branding / 'logo.png', Path('flutter/assets') / filename)
-print('Applied Interlogic Support branding; upstream license/copyright retained.')
+
+print(f'Applied "{brand}" branding ("{app_name}"); upstream license/copyright retained.')
